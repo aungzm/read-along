@@ -11,4 +11,14 @@ export default defineConfig({
       "@": resolve(import.meta.dirname, "./src"),
     },
   },
+  server: {
+    port: 5173,
+    proxy: {
+      // Send API calls to the FastAPI service so the browser sees one origin.
+      "/api": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
+    },
+  },
 })
