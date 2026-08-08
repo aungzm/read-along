@@ -1,20 +1,27 @@
-import { Button } from "@/components/ui/button"
+import { AppShell } from "@/app/app-shell"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 
 export function App() {
   return (
-    <div className="flex min-h-svh p-6">
-      <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">
-        <div>
-          <h1 className="font-medium">Project ready!</h1>
-          <p>You may now add components and start building.</p>
-          <p>We&apos;ve already added the button component for you.</p>
-          <Button className="mt-2">Button</Button>
-        </div>
-        <div className="font-mono text-xs text-muted-foreground">
-          (Press <kbd>d</kbd> to toggle dark mode)
-        </div>
-      </div>
-    </div>
+    <AppShell>
+      <Card>
+        <CardHeader>
+          <CardTitle>No jobs yet</CardTitle>
+          <CardDescription>
+            Upload an EPUB and its audiobook to start an alignment job.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          The job list will appear here once the API is connected.
+        </CardContent>
+      </Card>
+    </AppShell>
   )
 }
 
