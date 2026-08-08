@@ -1,0 +1,21 @@
+{
+  "name": "read-along",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fuse an EPUB and its audiobook into a single EPUB 3 file with Media Overlays.",
+  "packageManager": "pnpm@10.28.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @read-along/web dev",
+    "build": "pnpm --filter @read-along/web build",
+    "preview": "pnpm --filter @read-along/web preview",
+    "typecheck": "pnpm --filter @read-along/web typecheck",
+    "lint": "pnpm --filter @read-along/web lint",
+    "format": "pnpm --filter @read-along/web format",
+    "api:dev": "pnpm --filter @read-along/api dev",
+    "api:test": "pnpm --filter @read-along/api test"
+  }
+}

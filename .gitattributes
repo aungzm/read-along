@@ -1,0 +1,19 @@
+# Normalize line endings to LF in the repository, regardless of platform.
+* text=auto eol=lf
+
+# Binary assets that must never be normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+
+# Media and archive formats this project handles.
+*.epub binary
+*.m4b binary
+*.mp3 binary
+*.zip binary

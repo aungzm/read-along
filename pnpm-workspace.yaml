@@ -1,0 +1,7 @@
+packages:
+  - "apps/*"
+  - "services/*"
+
+# Native build scripts pnpm is allowed to run. Everything else stays off.
+allowBuilds:
+  esbuild: true
