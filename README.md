@@ -17,39 +17,58 @@ read-along/
 ## Stack
 
 - **Web** — Vite, React 19, TypeScript, TanStack Query, Tailwind CSS v4 and
-  shadcn/ui (preset `b1x9M8ZeJW`: taupe, maia style, outfit + raleway, hugeicons).
-- **API** — FastAPI on Python 3.14, served with uvicorn.
+  shadcn/ui. The theme comes from the shadcn preset `b1x9M8ZeJW`: taupe tokens,
+  the `maia` style on Base UI, outfit and raleway, hugeicons.
+- **API** — FastAPI on Python 3.12+, served with uvicorn.
 - **Tooling** — pnpm workspaces for the frontend, a virtualenv for the backend.
 
 ## Getting started
-
-### Web
-
-```sh
-pnpm install
-pnpm dev
-```
-
-The dev server runs on <http://localhost:5173> and proxies `/api` to the backend
-at <http://localhost:8000>.
 
 ### API
 
 ```sh
 cd services/api
 python -m venv .venv
-.venv\Scripts\activate        # Windows; use `source .venv/bin/activate` elsewhere
+.venv\Scripts\activate          # or: source .venv/bin/activate
 pip install -e ".[dev]"
-pnpm dev                      # or: uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 8000
 ```
 
-Then open the web app; the health badge and the jobs list should populate from
-the API.
+### Web
+
+In a second shell, from the repository root:
+
+```sh
+pnpm install
+pnpm dev
+```
+
+Open <http://localhost:5173>. The API badge and the jobs list read from the
+service on port 8000, which the dev server proxies under `/api`.
+
+## Scripts
+
+Run from the repository root:
+
+| Command          | Does                                  |
+| ---------------- | ------------------------------------- |
+| `pnpm dev`       | Start the web dev server.             |
+| `pnpm build`     | Build the web app.                    |
+| `pnpm typecheck` | Type-check the web app.               |
+| `pnpm lint`      | Lint the web app.                     |
+| `pnpm api:dev`   | Start the API (activate the venv).    |
+| `pnpm api:test`  | Run the API tests.                    |
+
+## API
+
+Routes live under `/api`: health, and a jobs resource with create, list, fetch,
+cancel and a server-sent event stream. See [`services/api/README.md`](services/api/README.md).
 
 ## Status
 
 Scaffold only. The alignment pipeline — EPUB parsing, transcription and Media
-Overlay writing — is not implemented; the API serves in-memory placeholder jobs.
+Overlay writing — is not implemented; the API serves in-memory placeholder jobs
+that advance on a timer.
 
 ## License
 
