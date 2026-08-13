@@ -4,6 +4,7 @@ import { AppShell } from "@/app/app-shell"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { jobTitleFromEpub } from "@/features/ingest/files"
+import { ActiveRunCard } from "@/features/ingest/active-run-card"
 import { IngestSection, type IngestFiles } from "@/features/ingest/ingest-section"
 import { JobList } from "@/features/jobs/job-list"
 import { useJobEvents } from "@/features/jobs/use-job-events"
@@ -57,6 +58,8 @@ export function App() {
             <ApiStatus />
           </div>
         </section>
+
+        {activeJob ? <ActiveRunCard job={activeJob} /> : null}
 
         <section>
           {jobs.isPending ? (

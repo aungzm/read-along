@@ -16,6 +16,14 @@ export type JobStatus =
   | "failed"
   | "cancelled"
 
+export const STAGES: Stage[] = [
+  "extract",
+  "transcribe",
+  "align",
+  "build",
+  "package",
+]
+
 export const STAGE_LABELS: Record<Stage, string> = {
   extract: "Extract",
   transcribe: "Transcribe",
