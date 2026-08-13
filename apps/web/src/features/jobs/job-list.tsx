@@ -1,10 +1,11 @@
-import { Clock01Icon } from "@hugeicons/core-free-icons"
+import { Clock01Icon, Download01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { STAGE_LABELS, type Job, type JobStatus } from "@/lib/api"
+import { downloadResultFile, type ResultNames } from "@/features/ingest/result-file"
 import { useCancelJob } from "./use-jobs"
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline"
@@ -21,7 +22,7 @@ function isActive(job: Job) {
   return job.status === "queued" || job.status === "running"
 }
 
-function JobRow({ job }: { job: Job }) {
+function JobRow({ job, names }: { job: Job; names?: ResultNames }) {
   const cancelJob = useCancelJob()
   const active = isActive(job)
 
@@ -49,6 +50,16 @@ function JobRow({ job }: { job: Job }) {
               Cancel
             </Button>
           ) : null}
+          {job.status === "succeeded" ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => downloadResultFile(job, names)}
+            >
+              <HugeiconsIcon icon={Download01Icon} />
+              Download result
+            </Button>
+          ) : null}
         </div>
       </div>
       {active ? <Progress value={Math.round(job.progress * 100)} /> : null}
@@ -57,7 +68,13 @@ function JobRow({ job }: { job: Job }) {
   )
 }
 
-export function JobList({ jobs }: { jobs: Job[] }) {
+export function JobList({
+  jobs,
+  resultNames,
+}: {
+  jobs: Job[]
+  resultNames: Record<string, ResultNames>
+}) {
   if (jobs.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed py-12 text-center">
@@ -72,7 +89,7 @@ export function JobList({ jobs }: { jobs: Job[] }) {
   return (
     <ul className="divide-y">
       {jobs.map((job) => (
-        <JobRow key={job.jobId} job={job} />
+        <JobRow key={job.jobId} job={job} names={resultNames[job.jobId]} />
       ))}
     </ul>
   )

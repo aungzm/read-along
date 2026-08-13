@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { jobTitleFromEpub } from "@/features/ingest/files"
 import { ActiveRunCard } from "@/features/ingest/active-run-card"
 import { IngestSection, type IngestFiles } from "@/features/ingest/ingest-section"
+import type { ResultNames } from "@/features/ingest/result-file"
 import { JobList } from "@/features/jobs/job-list"
 import { useJobEvents } from "@/features/jobs/use-job-events"
 import { useCreateJob, useHealth, useJobs } from "@/features/jobs/use-jobs"
@@ -26,6 +27,9 @@ export function App() {
   const jobs = useJobs()
   const createJob = useCreateJob()
   const [files, setFiles] = useState<IngestFiles>({ epub: null, audio: null })
+  // Source file names per job, so the fake download can name them. Jobs from
+  // before this session simply have no entry and get a generic file.
+  const [resultNames, setResultNames] = useState<Record<string, ResultNames>>({})
   const activeJob =
     jobs.data?.find(
       (job) => job.status === "queued" || job.status === "running",
@@ -36,8 +40,16 @@ export function App() {
   const canStart = files.epub !== null && files.audio !== null
 
   function handleStart() {
-    if (!files.epub || !files.audio || activeJob || createJob.isPending) return
-    createJob.mutate(jobTitleFromEpub(files.epub))
+    const epub = files.epub
+    const audio = files.audio
+    if (!epub || !audio || activeJob || createJob.isPending) return
+    createJob.mutate(jobTitleFromEpub(epub), {
+      onSuccess: (job) =>
+        setResultNames((prev) => ({
+          ...prev,
+          [job.jobId]: { epubName: epub.name, audioName: audio.name },
+        })),
+    })
   }
 
   return (
@@ -72,7 +84,7 @@ export function App() {
               Could not reach the API. Start it with <code>pnpm api:dev</code>.
             </p>
           ) : (
-            <JobList jobs={jobs.data ?? []} />
+            <JobList jobs={jobs.data ?? []} resultNames={resultNames} />
           )}
         </section>
       </div>
