@@ -1,6 +1,7 @@
 import { BookOpen01Icon, HeadphonesIcon } from "@hugeicons/core-free-icons"
 import { useState } from "react"
 
+import { Button } from "@/components/ui/button"
 import { FilePickCard } from "./file-pick-card"
 import {
   AUDIO_ACCEPT,
@@ -17,14 +18,25 @@ export type IngestFiles = {
 type IngestSectionProps = {
   files: IngestFiles
   onChange: (files: IngestFiles) => void
+  canStart: boolean
+  isStarting: boolean
+  isBlocked: boolean
+  onStart: () => void
 };
 
 /**
- * The two upload cards. Files stay in the browser; picking a file only
- * validates it locally. Starting the (mock) alignment run is wired up next —
- * this slice is the pickers and their state.
+ * The upload cards plus the Start aligning button. Files stay in the browser;
+ * starting creates a backend job (the mock progress timer) titled after the
+ * EPUB file name.
  */
-export function IngestSection({ files, onChange }: IngestSectionProps) {
+export function IngestSection({
+  files,
+  onChange,
+  canStart,
+  isStarting,
+  isBlocked,
+  onStart,
+}: IngestSectionProps) {
   const [epubError, setEpubError] = useState<string | null>(null)
   const [audioError, setAudioError] = useState<string | null>(null)
 
@@ -73,6 +85,20 @@ export function IngestSection({ files, onChange }: IngestSectionProps) {
             onChange({ ...files, audio: null })
           }}
         />
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={onStart} disabled={!canStart || isStarting || isBlocked}>
+          {isStarting ? "Starting…" : "Start aligning"}
+        </Button>
+        {isBlocked ? (
+          <p className="text-xs text-muted-foreground">
+            An alignment is already running.
+          </p>
+        ) : !canStart ? (
+          <p className="text-xs text-muted-foreground">
+            Pick both files to start.
+          </p>
+        ) : null}
       </div>
     </div>
   )

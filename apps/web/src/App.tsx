@@ -3,11 +3,11 @@ import { useState } from "react"
 import { AppShell } from "@/app/app-shell"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { jobTitleFromEpub } from "@/features/ingest/files"
 import { IngestSection, type IngestFiles } from "@/features/ingest/ingest-section"
 import { JobList } from "@/features/jobs/job-list"
-import { NewJobForm } from "@/features/jobs/new-job-form"
 import { useJobEvents } from "@/features/jobs/use-job-events"
-import { useHealth, useJobs } from "@/features/jobs/use-jobs"
+import { useCreateJob, useHealth, useJobs } from "@/features/jobs/use-jobs"
 
 function ApiStatus() {
   const health = useHealth()
@@ -23,6 +23,7 @@ function ApiStatus() {
 
 export function App() {
   const jobs = useJobs()
+  const createJob = useCreateJob()
   const [files, setFiles] = useState<IngestFiles>({ epub: null, audio: null })
   const activeJob =
     jobs.data?.find(
@@ -31,17 +32,30 @@ export function App() {
 
   useJobEvents(activeJob?.jobId ?? null)
 
+  const canStart = files.epub !== null && files.audio !== null
+
+  function handleStart() {
+    if (!files.epub || !files.audio || activeJob || createJob.isPending) return
+    createJob.mutate(jobTitleFromEpub(files.epub))
+  }
+
   return (
     <AppShell>
       <div className="space-y-8">
-        <IngestSection files={files} onChange={setFiles} />
+        <IngestSection
+          files={files}
+          onChange={setFiles}
+          canStart={canStart}
+          isStarting={createJob.isPending}
+          isBlocked={activeJob !== null}
+          onStart={handleStart}
+        />
 
         <section className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h1 className="font-heading text-lg font-semibold">Alignment jobs</h1>
             <ApiStatus />
           </div>
-          <NewJobForm />
         </section>
 
         <section>
