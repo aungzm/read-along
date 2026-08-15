@@ -1,97 +1,83 @@
-import {
-  CheckmarkCircle02Icon,
-  Loading03Icon,
-} from "@hugeicons/core-free-icons"
-import { HugeiconsIcon } from "@hugeicons/react"
-
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { STAGES, STAGE_LABELS, type Job } from "@/lib/api"
 import { useCancelJob } from "@/features/jobs/use-jobs"
+import { JobStatusBadge } from "@/features/jobs/status-badge"
 
-function StageStep({
-  label,
-  state,
-}: {
-  label: string
-  state: "done" | "active" | "pending"
-}) {
+type StepState = "done" | "active" | "pending"
+
+/** A filled dot per stage, strung along a rule: the alignment as a tape. */
+function StageTape({ stateFor }: { stateFor: (index: number) => StepState }) {
   return (
-    <li className="flex items-center gap-2 text-sm">
-      {state === "done" ? (
-        <HugeiconsIcon
-          icon={CheckmarkCircle02Icon}
-          className="size-4 text-primary"
-        />
-      ) : state === "active" ? (
-        <HugeiconsIcon
-          icon={Loading03Icon}
-          className="size-4 animate-spin text-primary"
-        />
-      ) : (
-        <span className="size-4 rounded-full border border-muted-foreground/40" />
-      )}
+    <ol className="relative flex flex-col gap-3 sm:grid sm:grid-cols-5 sm:gap-1">
       <span
-        className={
-          state === "pending" ? "text-muted-foreground" : "font-medium"
-        }
-      >
-        {label}
-      </span>
-    </li>
+        aria-hidden="true"
+        className="absolute inset-x-1.5 top-[0.4rem] hidden h-px bg-border sm:block"
+      />
+      {STAGES.map((stage, index) => {
+        const state = stateFor(index)
+        return (
+          <li
+            key={stage}
+            className="relative flex items-center gap-3 sm:flex-col sm:items-center sm:gap-2 sm:text-center"
+          >
+            <span
+              aria-hidden="true"
+              className={
+                state === "pending"
+                  ? "size-3.5 shrink-0 rounded-full border border-border bg-background"
+                  : state === "active"
+                    ? "stage-live size-3.5 shrink-0 rounded-full bg-voice ring-2 ring-voice/25"
+                    : "size-3.5 shrink-0 rounded-full bg-voice"
+              }
+            />
+            <span
+              className={
+                state === "pending"
+                  ? "text-xs leading-tight text-muted-foreground sm:text-[0.7rem]"
+                  : "text-xs leading-tight font-medium sm:text-[0.7rem]"
+              }
+            >
+              {STAGE_LABELS[stage]}
+            </span>
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 
 /**
- * The live run card. Follows the active job's server-sent events (already
- * folded into the query cache) and renders the stage pipeline plus the
- * overall progress bar. Mock stages advance on the backend timer.
+ * The live run strip. Follows the active job's server-sent events (already
+ * folded into the query cache) and renders the stage tape plus the overall
+ * progress. Mock stages advance on the backend timer.
  */
 export function ActiveRunCard({ job }: { job: Job }) {
   const cancelJob = useCancelJob()
   const percent = Math.round(job.progress * 100)
   const activeIndex = job.stage ? STAGES.indexOf(job.stage) : -1
 
+  const stateFor = (index: number): StepState => {
+    if (job.status === "queued" || index > activeIndex) return "pending"
+    return index === activeIndex ? "active" : "done"
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <CardTitle className="text-base">
-              {job.status === "queued" ? "Queued" : "Aligning"} · {job.title}
-            </CardTitle>
-            <CardDescription>
-              Mock run — stages advance on a timer. Nothing is really aligned
-              yet.
-            </CardDescription>
-          </div>
-          <Badge variant="secondary">{job.status}</Badge>
+    <article className="overflow-hidden rounded-xl border border-border/70">
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border/70 bg-paper/50 px-5 py-4">
+        <div className="space-y-1">
+          <h3 className="font-reading text-base font-medium">{job.title}</h3>
+          <p className="text-xs text-muted-foreground">
+            {job.status === "queued" ? "Waiting to start" : "Aligning"}. Stages
+            advance on a timer; nothing is really aligned yet.
+          </p>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <ol className="grid gap-2 sm:grid-cols-2">
-          {STAGES.map((stage, index) => (
-            <StageStep
-              key={stage}
-              label={STAGE_LABELS[stage]}
-              state={
-                job.status === "queued" || index > activeIndex
-                  ? "pending"
-                  : index === activeIndex
-                    ? "active"
-                    : "done"
-              }
-            />
-          ))}
-        </ol>
+        <JobStatusBadge status={job.status} />
+      </header>
+
+      <div className="space-y-5 px-5 py-5">
+        <StageTape stateFor={stateFor} />
+
         <div className="space-y-2">
           <div className="flex items-baseline justify-between text-sm">
             <span className="text-muted-foreground">
@@ -101,6 +87,7 @@ export function ActiveRunCard({ job }: { job: Job }) {
           </div>
           <Progress value={percent} />
         </div>
+
         <Button
           variant="outline"
           size="sm"
@@ -109,7 +96,7 @@ export function ActiveRunCard({ job }: { job: Job }) {
         >
           Cancel run
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </article>
   )
 }

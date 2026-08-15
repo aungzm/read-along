@@ -1,7 +1,7 @@
 import { useState } from "react"
 
 import { AppShell } from "@/app/app-shell"
-import { Badge } from "@/components/ui/badge"
+import { Hero } from "@/app/hero"
 import { Skeleton } from "@/components/ui/skeleton"
 import { jobTitleFromEpub } from "@/features/ingest/files"
 import { ActiveRunCard } from "@/features/ingest/active-run-card"
@@ -9,19 +9,7 @@ import { IngestSection, type IngestFiles } from "@/features/ingest/ingest-sectio
 import type { ResultNames } from "@/features/ingest/result-file"
 import { JobList } from "@/features/jobs/job-list"
 import { useJobEvents } from "@/features/jobs/use-job-events"
-import { useCreateJob, useHealth, useJobs } from "@/features/jobs/use-jobs"
-
-function ApiStatus() {
-  const health = useHealth()
-
-  if (health.isPending) {
-    return <Badge variant="outline">Checking API…</Badge>
-  }
-  if (health.isError) {
-    return <Badge variant="destructive">API offline</Badge>
-  }
-  return <Badge variant="secondary">API v{health.data.version}</Badge>
-}
+import { useCreateJob, useJobs } from "@/features/jobs/use-jobs"
 
 export function App() {
   const jobs = useJobs()
@@ -30,10 +18,14 @@ export function App() {
   // Source file names per job, so the fake download can name them. Jobs from
   // before this session simply have no entry and get a generic file.
   const [resultNames, setResultNames] = useState<Record<string, ResultNames>>({})
+  const allJobs = jobs.data ?? []
   const activeJob =
-    jobs.data?.find(
-      (job) => job.status === "queued" || job.status === "running",
-    ) ?? null
+    allJobs.find((job) => job.status === "queued" || job.status === "running") ??
+    null
+  // The active job has its own live strip above; keep it out of the history.
+  const pastJobs = activeJob
+    ? allJobs.filter((job) => job.jobId !== activeJob.jobId)
+    : allJobs
 
   useJobEvents(activeJob?.jobId ?? null)
 
@@ -54,7 +46,9 @@ export function App() {
 
   return (
     <AppShell>
-      <div className="space-y-8">
+      <div className="space-y-12">
+        <Hero />
+
         <IngestSection
           files={files}
           onChange={setFiles}
@@ -64,16 +58,13 @@ export function App() {
           onStart={handleStart}
         />
 
-        <section className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h1 className="font-heading text-lg font-semibold">Alignment jobs</h1>
-            <ApiStatus />
-          </div>
-        </section>
+        <section className="space-y-5">
+          <h2 className="border-b border-border/70 pb-3 font-reading text-lg font-medium">
+            Alignment jobs
+          </h2>
 
-        {activeJob ? <ActiveRunCard job={activeJob} /> : null}
+          {activeJob ? <ActiveRunCard job={activeJob} /> : null}
 
-        <section>
           {jobs.isPending ? (
             <div className="space-y-3">
               <Skeleton className="h-16 w-full" />
@@ -81,11 +72,17 @@ export function App() {
             </div>
           ) : jobs.isError ? (
             <p className="text-sm text-destructive">
-              Could not reach the API. Start it with <code>pnpm api:dev</code>.
+              Could not reach the API. Start it with{" "}
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                pnpm api:dev
+              </code>
+              .
             </p>
-          ) : (
-            <JobList jobs={jobs.data ?? []} resultNames={resultNames} />
-          )}
+          ) : pastJobs.length > 0 ? (
+            <JobList jobs={pastJobs} resultNames={resultNames} />
+          ) : allJobs.length === 0 ? (
+            <JobList jobs={[]} resultNames={resultNames} />
+          ) : null}
         </section>
       </div>
     </AppShell>

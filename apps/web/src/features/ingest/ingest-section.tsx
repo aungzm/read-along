@@ -41,17 +41,18 @@ export function IngestSection({
   const [audioError, setAudioError] = useState<string | null>(null)
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="font-heading text-lg font-semibold">New alignment</h1>
+    <div className="space-y-5">
+      <div className="space-y-1">
+        <h2 className="font-reading text-lg font-medium">New alignment</h2>
         <p className="text-sm text-muted-foreground">
           Pick the book and its narration. Nothing leaves the browser yet.
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         <FilePickCard
           title="EPUB file"
           description="The ebook to align."
+          badge=".epub"
           icon={BookOpen01Icon}
           accept={EPUB_ACCEPT}
           inputId="epub-file"
@@ -70,6 +71,7 @@ export function IngestSection({
         <FilePickCard
           title="Audio file"
           description="The audiobook narration."
+          badge="audio"
           icon={HeadphonesIcon}
           accept={AUDIO_ACCEPT}
           inputId="audio-file"
@@ -87,7 +89,11 @@ export function IngestSection({
         />
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <Button onClick={onStart} disabled={!canStart || isStarting || isBlocked}>
+        <Button
+          size="lg"
+          onClick={onStart}
+          disabled={!canStart || isStarting || isBlocked}
+        >
           {isStarting ? "Starting…" : "Start aligning"}
         </Button>
         {isBlocked ? (
