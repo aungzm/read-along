@@ -66,9 +66,11 @@ cancel and a server-sent event stream. See [`services/api/README.md`](services/a
 
 ## Status
 
-Scaffold only. The alignment pipeline — EPUB parsing, transcription and Media
-Overlay writing — is not implemented; the API serves in-memory placeholder jobs
-that advance on a timer.
+Early scaffold. The `extract` stage is real: the API accepts an EPUB plus audio
+upload, stores both, and reads the EPUB's metadata — title, author, language and
+chapter count — into the job. Transcription, forced alignment and Media Overlay
+writing are still placeholders that advance on a timer, and the download is a
+stand-in text file. Jobs live in memory and do not survive a restart.
 
 ## License
 

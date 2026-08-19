@@ -25,7 +25,13 @@ function JobRow({ job, names }: { job: Job; names?: ResultNames }) {
             {job.title}
           </p>
           <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-            <span>{job.stage ? STAGE_LABELS[job.stage] : job.status}</span>
+            <span>
+              {job.book?.author ??
+                (job.stage ? STAGE_LABELS[job.stage] : job.status)}
+            </span>
+            {job.book ? (
+              <span>{job.book.chapters} chapters</span>
+            ) : null}
             {active && job.progress > 0 ? (
               <span className="tabular-nums">{percent}%</span>
             ) : null}

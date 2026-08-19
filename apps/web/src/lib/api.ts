@@ -37,6 +37,21 @@ export type Health = {
   version: string
 }
 
+export type Book = {
+  title: string
+  author: string | null
+  language: string | null
+  chapters: number
+  identifier: string | null
+}
+
+export type SourceFiles = {
+  epubName: string
+  audioName: string
+  epubBytes: number
+  audioBytes: number
+}
+
 export type Job = {
   jobId: string
   title: string
@@ -46,6 +61,8 @@ export type Job = {
   createdAt: string
   updatedAt: string
   error: string | null
+  source: SourceFiles | null
+  book: Book | null
 }
 
 export type JobEvent = {
@@ -91,12 +108,13 @@ export const api = {
 
   listJobs: () => request<Job[]>("/jobs"),
 
-  createJob: (title: string) =>
-    request<Job>("/jobs", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title }),
-    }),
+  createJob: (files: { epub: File; audio: File }) => {
+    const body = new FormData()
+    body.append("epub", files.epub)
+    body.append("audio", files.audio)
+    // No content-type header: the browser sets the multipart boundary.
+    return request<Job>("/jobs", { method: "POST", body })
+  },
 
   cancelJob: (jobId: string) =>
     request<Job>(`/jobs/${jobId}/cancel`, { method: "POST" }),

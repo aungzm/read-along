@@ -40,8 +40,23 @@ class Health(WireModel):
     version: str
 
 
-class JobCreate(WireModel):
-    title: str = Field(min_length=1, max_length=200)
+class Book(WireModel):
+    """What the extract stage learned from the EPUB's package document."""
+
+    title: str
+    author: str | None = None
+    language: str | None = None
+    chapters: int = 0
+    identifier: str | None = None
+
+
+class SourceFiles(WireModel):
+    """The two files the job was created from, as uploaded."""
+
+    epub_name: str
+    audio_name: str
+    epub_bytes: int
+    audio_bytes: int
 
 
 class Job(WireModel):
@@ -53,6 +68,8 @@ class Job(WireModel):
     created_at: datetime
     updated_at: datetime
     error: str | None = None
+    source: SourceFiles | None = None
+    book: Book | None = None
 
 
 class JobEvent(WireModel):

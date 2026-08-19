@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { STAGES, STAGE_LABELS, type Job } from "@/lib/api"
+import { formatFileSize } from "@/features/ingest/files"
 import { useCancelJob } from "@/features/jobs/use-jobs"
 import { JobStatusBadge } from "@/features/jobs/status-badge"
 
@@ -47,10 +48,34 @@ function StageTape({ stateFor }: { stateFor: (index: number) => StepState }) {
   )
 }
 
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="truncate text-sm font-medium">{value}</dd>
+    </div>
+  )
+}
+
+/** What the extract stage read out of the package document. */
+function BookDetails({ job }: { job: Job }) {
+  if (!job.book) return null
+
+  return (
+    <dl className="grid grid-cols-2 gap-x-6 gap-y-3 border-b border-border/70 pb-4 sm:grid-cols-4">
+      <Stat label="Author" value={job.book.author ?? "—"} />
+      <Stat label="Chapters" value={String(job.book.chapters)} />
+      <Stat label="Language" value={job.book.language ?? "—"} />
+      <Stat label="Audio" value={formatFileSize(job.source?.audioBytes ?? 0)} />
+    </dl>
+  )
+}
+
 /**
  * The live run strip. Follows the active job's server-sent events (already
- * folded into the query cache) and renders the stage tape plus the overall
- * progress. Mock stages advance on the backend timer.
+ * folded into the query cache) and renders the extracted book, the stage tape
+ * and the overall progress. Extract is real; the remaining stages advance on
+ * the backend timer.
  */
 export function ActiveRunCard({ job }: { job: Job }) {
   const cancelJob = useCancelJob()
@@ -68,14 +93,16 @@ export function ActiveRunCard({ job }: { job: Job }) {
         <div className="space-y-1">
           <h3 className="font-reading text-base font-medium">{job.title}</h3>
           <p className="text-xs text-muted-foreground">
-            {job.status === "queued" ? "Waiting to start" : "Aligning"}. Stages
-            advance on a timer; nothing is really aligned yet.
+            {job.status === "queued" ? "Waiting to start" : "Aligning"}. Extract
+            is real; the rest advances on a timer.
           </p>
         </div>
         <JobStatusBadge status={job.status} />
       </header>
 
       <div className="space-y-5 px-5 py-5">
+        <BookDetails job={job} />
+
         <StageTape stateFor={stateFor} />
 
         <div className="space-y-2">

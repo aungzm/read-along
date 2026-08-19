@@ -3,7 +3,6 @@ import { useState } from "react"
 import { AppShell } from "@/app/app-shell"
 import { Hero } from "@/app/hero"
 import { Skeleton } from "@/components/ui/skeleton"
-import { jobTitleFromEpub } from "@/features/ingest/files"
 import { ActiveRunCard } from "@/features/ingest/active-run-card"
 import { IngestSection, type IngestFiles } from "@/features/ingest/ingest-section"
 import type { ResultNames } from "@/features/ingest/result-file"
@@ -35,13 +34,16 @@ export function App() {
     const epub = files.epub
     const audio = files.audio
     if (!epub || !audio || activeJob || createJob.isPending) return
-    createJob.mutate(jobTitleFromEpub(epub), {
-      onSuccess: (job) =>
-        setResultNames((prev) => ({
-          ...prev,
-          [job.jobId]: { epubName: epub.name, audioName: audio.name },
-        })),
-    })
+    createJob.mutate(
+      { epub, audio },
+      {
+        onSuccess: (job) =>
+          setResultNames((prev) => ({
+            ...prev,
+            [job.jobId]: { epubName: epub.name, audioName: audio.name },
+          })),
+      },
+    )
   }
 
   return (

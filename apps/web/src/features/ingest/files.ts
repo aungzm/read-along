@@ -49,8 +49,3 @@ export function formatFileSize(bytes: number): string {
   }
   return `${size.toFixed(size >= 100 ? 0 : 1)} ${units[unit]}`;
 }
-
-/** Title for the mock job, derived from the EPUB file name. */
-export function jobTitleFromEpub(file: File): string {
-  return file.name.replace(/\.epub$/i, "");
-}

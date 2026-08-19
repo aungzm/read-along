@@ -45,7 +45,8 @@ export function IngestSection({
       <div className="space-y-1">
         <h2 className="font-reading text-lg font-medium">New alignment</h2>
         <p className="text-sm text-muted-foreground">
-          Pick the book and its narration. Nothing leaves the browser yet.
+          Pick the book and its narration. Both upload to the API when you
+          start.
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -94,7 +95,7 @@ export function IngestSection({
           onClick={onStart}
           disabled={!canStart || isStarting || isBlocked}
         >
-          {isStarting ? "Starting…" : "Start aligning"}
+          {isStarting ? "Uploading…" : "Start aligning"}
         </Button>
         {isBlocked ? (
           <p className="text-xs text-muted-foreground">

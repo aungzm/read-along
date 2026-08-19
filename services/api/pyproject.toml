@@ -5,7 +5,9 @@ description = "FastAPI service behind the read-along web app."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "defusedxml>=0.7.1",
   "fastapi>=0.118",
+  "python-multipart>=0.0.20",
   "uvicorn[standard]>=0.35",
   "pydantic-settings>=2.7",
 ]
