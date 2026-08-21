@@ -37,6 +37,22 @@ scaffolding for the alignment engine, not an implementation of it. Jobs are held
 in memory, so restarting the service clears the job list; the uploaded
 directories under `data_dir` remain.
 
+### Planned pipeline contracts
+
+`app/pipeline.py` sketches the next implementation. It is not wired into the
+job worker: every function raises `NotImplementedError`. The planned path is
+spine XHTML to sentence anchors, one audio file to a rough transcript, rough
+passage matches to sentence timings, a coverage review, then SMIL overlays and
+a validated EPUB. Unmatched text stays unmatched; `partial` and `rejected`
+reports do not produce a download by default. The current successful job and
+download are still placeholders after metadata extraction.
+
+For the proposed transcription step, `TranscriptionOptions` defaults to
+faster-whisper's `small.en` model on CPU with `int8` inference and voice activity
+detection. This is a starting choice for English narration, not an installed
+dependency or a working transcription stage. Test it against real books before
+settling on the model; use a multilingual model if the narration is not English.
+
 ## Tests
 
 ```sh
