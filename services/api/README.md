@@ -39,18 +39,33 @@ directories under `data_dir` remain.
 
 ### Planned pipeline contracts
 
-`app/pipeline.py` sketches the next implementation. It is not wired into the
-job worker: every function raises `NotImplementedError`. The planned path is
-spine XHTML to sentence anchors, one audio file to a rough transcript, rough
-passage matches to sentence timings, a coverage review, then SMIL overlays and
-a validated EPUB. Unmatched text stays unmatched; `partial` and `rejected`
-reports do not produce a download by default. The current successful job and
-download are still placeholders after metadata extraction.
+`app/pipeline.py` holds the read-along engine, still outside the job worker. The
+path is spine XHTML to sentence anchors, one audio file to a rough transcript,
+rough passage matches to sentence timings, a coverage review, then SMIL overlays
+and a validated EPUB. All stages are implemented and directly tested, but the
+job worker's `transcribe`, `align`, `build` and `package` stages remain timers
+until they call this module. Unmatched text stays unmatched; `partial` and
+`rejected` reports do not produce a download by default. The current successful
+job and download are still placeholders after metadata extraction.
 
-For the proposed transcription step, `TranscriptionOptions` defaults to
-faster-whisper's `small.en` model on CPU with `int8` inference and voice activity
-detection. This is a starting choice for English narration, not an installed
-dependency or a working transcription stage. Test it against real books before
+- `extract_sentences()` reads spine XHTML into sentence text, stable IDs, and
+  source character offsets. Sentence splitting uses basic punctuation rules and
+  does not handle abbreviations or every XHTML layout.
+- `transcribe_audio()` wraps faster-whisper with word timestamps. It needs the
+  optional `transcribe` extra (`pip install -e ".[transcribe]"`) and a model
+  download on first use.
+- `locate_passages()` and `align_sentences()` match normalized words with
+  difflib's longest-matching blocks, so they tolerate skipped text and
+  audio-only speech without an acoustic model. They drop weak matches instead of
+  guessing, and their thresholds still need tuning on real book/audio pairs.
+- `review_alignment()` checks coverage and rejects invalid or out-of-order timing
+  data. It checks structural validity, not acoustic accuracy.
+- `build_overlays()` writes SMIL per content document; `package_epub()` anchors
+  sentences, adds the audio and overlays, updates the OPF, and validates the
+  result with EPUBCheck when `epubcheck` or `EPUBCHECK_JAR` is available.
+
+`TranscriptionOptions` defaults to faster-whisper's `small.en` model on CPU with
+`int8` inference and voice activity detection. Test it against real books before
 settling on the model; use a multilingual model if the narration is not English.
 
 ## Tests
