@@ -300,13 +300,13 @@ def test_package_epub_end_to_end(tmp_path: Path) -> None:
             assert anchors[sentence.anchor_id] == sentence.text
 
         package = fromstring(archive.read("OEBPS/content.opf"))
-        itemref = package.find(f".//{{{OPF_NS}}}itemref")
-        assert itemref is not None and itemref.get("media-overlay")
-        hrefs = {
-            item.get("id"): item.get("href")
-            for item in package.findall(f".//{{{OPF_NS}}}item")
-        }
-        assert hrefs[itemref.get("media-overlay")] == "Text/ch1.smil"
+        items = package.findall(f".//{{{OPF_NS}}}item")
+        content_item = next(item for item in items if item.get("href") == "Text/ch1.xhtml")
+        overlay_id = content_item.get("media-overlay")
+        assert overlay_id
+        assert next(item for item in items if item.get("id") == overlay_id).get("href") == "Text/ch1.smil"
+        assert package.find(f".//{{{OPF_NS}}}itemref").get("media-overlay") is None
+        hrefs = {item.get("id"): item.get("href") for item in items}
         assert any(value == "audio/book.mp3" for value in hrefs.values())
         assert package.find(f".//{{{OPF_NS}}}meta[@property='media:duration']") is not None
         smil = fromstring(archive.read("OEBPS/Text/ch1.smil"))

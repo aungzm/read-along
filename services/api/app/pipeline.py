@@ -742,14 +742,13 @@ def _update_package(
         item.set("href", posixpath.relpath(archive, base))
         item.set("media-type", "application/smil+xml")
 
-    hrefs = {item.get("id"): item.get("href") for item in manifest.findall(qa("item"))}
-    for itemref in spine.findall(qa("itemref")):
-        href = hrefs.get(itemref.get("idref"))
+    for item in manifest.findall(qa("item")):
+        href = item.get("href")
         if not href:
             continue
         document = _resolve(base, href.split("#", 1)[0])
         if document in overlay_ids:
-            itemref.set("media-overlay", overlay_ids[document])
+            item.set("media-overlay", overlay_ids[document])
 
     metadata = package.find(qa("metadata"))
     if metadata is None:
