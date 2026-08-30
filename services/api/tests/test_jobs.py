@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -62,6 +64,14 @@ async def test_wrong_file_type_is_rejected(tmp_path: Path) -> None:
     assert "epub" in response.json()["detail"].lower()
 
 
+async def test_unsupported_epub_audio_is_rejected(tmp_path: Path) -> None:
+    async with make_client(tmp_path) as client:
+        response = await client.post("/api/jobs", files=upload_files(audio_name="book.flac"))
+
+    assert response.status_code == 400
+    assert "unsupported file type" in response.json()["detail"].lower()
+
+
 async def test_missing_files_are_rejected(tmp_path: Path) -> None:
     async with make_client(tmp_path, stage_seconds=FAST_STAGES) as client:
         response = await client.post(
@@ -87,6 +97,49 @@ async def test_cancel_stops_a_running_job(tmp_path: Path) -> None:
         job_id = created.json()["jobId"]
 
         response = await client.post(f"/api/jobs/{job_id}/cancel")
+        download = await client.get(f"/api/jobs/{job_id}/download")
 
     assert response.status_code == 200
     assert response.json()["status"] == "cancelled"
+    assert download.status_code == 409
+
+
+async def test_completed_job_downloads_a_synced_epub(tmp_path: Path) -> None:
+    async with make_client(tmp_path) as client:
+        job_id = (await create_job(client)).json()["jobId"]
+        assert (await client.get(f"/api/jobs/{job_id}/download")).status_code == 409
+        job = await wait_for_terminal(client, job_id)
+        response = await client.get(f"/api/jobs/{job_id}/download")
+
+    assert job["status"] == "succeeded"
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/epub+zip"
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        assert "OEBPS/chapter-0.smil" in archive.namelist()
+        assert "OEBPS/audio/read-along.mp3" in archive.namelist()
+        package = archive.read("OEBPS/content.opf")
+        assert b'media-overlay="ra-overlay-' in package
+        assert b"<" in archive.read("OEBPS/chapter-0.xhtml")
+
+
+async def test_incomplete_alignment_never_offers_download(tmp_path: Path) -> None:
+    async with make_client(tmp_path, transcriber=lambda _path: ()) as client:
+        job_id = (await create_job(client)).json()["jobId"]
+        job = await wait_for_terminal(client, job_id)
+        response = await client.get(f"/api/jobs/{job_id}/download")
+
+    assert job["status"] == "failed"
+    assert "0/3 sentences matched" in job["error"]
+    assert response.status_code == 409
+
+
+async def test_transcription_error_fails_the_job(tmp_path: Path) -> None:
+    def unavailable(_path: Path):
+        raise RuntimeError("Transcription needs the optional dependency")
+
+    async with make_client(tmp_path, transcriber=unavailable) as client:
+        job_id = (await create_job(client)).json()["jobId"]
+        job = await wait_for_terminal(client, job_id)
+
+    assert job["status"] == "failed"
+    assert "optional dependency" in job["error"]

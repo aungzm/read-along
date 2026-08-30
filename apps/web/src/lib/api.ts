@@ -120,4 +120,5 @@ export const api = {
     request<Job>(`/jobs/${jobId}/cancel`, { method: "POST" }),
 
   eventStreamUrl: (jobId: string) => `${API_BASE_URL}/jobs/${jobId}/events`,
+  downloadUrl: (jobId: string) => `${API_BASE_URL}/jobs/${jobId}/download`,
 }

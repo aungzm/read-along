@@ -74,8 +74,7 @@ function BookDetails({ job }: { job: Job }) {
 /**
  * The live run strip. Follows the active job's server-sent events (already
  * folded into the query cache) and renders the extracted book, the stage tape
- * and the overall progress. Extract is real; the remaining stages advance on
- * the backend timer.
+ * and the overall progress.
  */
 export function ActiveRunCard({ job }: { job: Job }) {
   const cancelJob = useCancelJob()
@@ -93,8 +92,7 @@ export function ActiveRunCard({ job }: { job: Job }) {
         <div className="space-y-1">
           <h3 className="font-reading text-base font-medium">{job.title}</h3>
           <p className="text-xs text-muted-foreground">
-            {job.status === "queued" ? "Waiting to start" : "Aligning"}. Extract
-            is real; the rest advances on a timer.
+            {job.status === "queued" ? "Waiting to start" : "Aligning your book and narration"}.
           </p>
         </div>
         <JobStatusBadge status={job.status} />

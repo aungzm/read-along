@@ -3,8 +3,7 @@
 Fuse an EPUB and its audiobook into a single EPUB 3 file with Media Overlays, so
 the narration plays and the matching text highlights as it is spoken.
 
-This repository is the working scaffold for that product: a Vite frontend and a
-FastAPI backend, wired together and ready to build on.
+This repository contains a Vite frontend and a FastAPI backend for that workflow.
 
 ## Layout
 
@@ -31,6 +30,7 @@ cd services/api
 python -m venv .venv
 .venv\Scripts\activate          # or: source .venv/bin/activate
 pip install -e ".[dev]"
+pip install -e ".[transcribe]"  # required for real audio transcription
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -62,15 +62,17 @@ Run from the repository root:
 ## API
 
 Routes live under `/api`: health, and a jobs resource with create, list, fetch,
-cancel and a server-sent event stream. See [`services/api/README.md`](services/api/README.md).
+cancel, download and a server-sent event stream. See [`services/api/README.md`](services/api/README.md).
 
 ## Status
 
-Early scaffold. The `extract` stage is real: the API accepts an EPUB plus audio
-upload, stores both, and reads the EPUB's metadata — title, author, language and
-chapter count — into the job. Transcription, forced alignment and Media Overlay
-writing are still placeholders that advance on a timer, and the download is a
-stand-in text file. Jobs live in memory and do not survive a restart.
+The API accepts an EPUB 3 plus MP3/M4A/M4B narration, extracts sentences,
+transcribes the audio, matches timestamps and packages Media Overlays into a
+downloadable EPUB. Partial matches fail rather than produce a misleading result.
+Transcription needs the optional `transcribe` dependency and downloads a model on
+first use. Matching is transcript-based, not acoustic forced alignment, and has
+not been validated on real book/audio pairs. Jobs live in memory and do not
+survive a restart.
 
 ## License
 

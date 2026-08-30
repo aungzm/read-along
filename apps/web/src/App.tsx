@@ -5,7 +5,6 @@ import { Hero } from "@/app/hero"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ActiveRunCard } from "@/features/ingest/active-run-card"
 import { IngestSection, type IngestFiles } from "@/features/ingest/ingest-section"
-import type { ResultNames } from "@/features/ingest/result-file"
 import { JobList } from "@/features/jobs/job-list"
 import { useJobEvents } from "@/features/jobs/use-job-events"
 import { useCreateJob, useJobs } from "@/features/jobs/use-jobs"
@@ -14,9 +13,6 @@ export function App() {
   const jobs = useJobs()
   const createJob = useCreateJob()
   const [files, setFiles] = useState<IngestFiles>({ epub: null, audio: null })
-  // Source file names per job, so the fake download can name them. Jobs from
-  // before this session simply have no entry and get a generic file.
-  const [resultNames, setResultNames] = useState<Record<string, ResultNames>>({})
   const allJobs = jobs.data ?? []
   const activeJob =
     allJobs.find((job) => job.status === "queued" || job.status === "running") ??
@@ -34,16 +30,7 @@ export function App() {
     const epub = files.epub
     const audio = files.audio
     if (!epub || !audio || activeJob || createJob.isPending) return
-    createJob.mutate(
-      { epub, audio },
-      {
-        onSuccess: (job) =>
-          setResultNames((prev) => ({
-            ...prev,
-            [job.jobId]: { epubName: epub.name, audioName: audio.name },
-          })),
-      },
-    )
+    createJob.mutate({ epub, audio })
   }
 
   return (
@@ -81,9 +68,9 @@ export function App() {
               .
             </p>
           ) : pastJobs.length > 0 ? (
-            <JobList jobs={pastJobs} resultNames={resultNames} />
+            <JobList jobs={pastJobs} />
           ) : allJobs.length === 0 ? (
-            <JobList jobs={[]} resultNames={resultNames} />
+            <JobList jobs={[]} />
           ) : null}
         </section>
       </div>

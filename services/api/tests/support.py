@@ -12,6 +12,7 @@ import httpx
 import uvicorn
 
 from app.main import create_app
+from app.pipeline import TranscriptSegment, WordTiming
 
 # Every request through httpx's ASGI transport runs the app in-process, which
 # is fast but buffers streaming responses. Tests that need the event stream use
@@ -29,6 +30,7 @@ _CONTAINER_XML = """<?xml version="1.0"?>
 
 
 def make_client(data_dir: Path, **kwargs: object) -> httpx.AsyncClient:
+    kwargs.setdefault("transcriber", fake_transcriber)
     transport = httpx.ASGITransport(app=create_app(data_dir=data_dir, **kwargs))
     return httpx.AsyncClient(transport=transport, base_url="http://test")
 
@@ -49,12 +51,17 @@ def epub_bytes(
         metadata.append(f"<dc:language>{language}</dc:language>")
     metadata.append('<dc:identifier id="bookid">urn:uuid:test</dc:identifier>')
     itemrefs = "".join(f'<itemref idref="chapter-{index}"/>' for index in range(chapters))
+    items = "".join(
+        f'<item id="chapter-{index}" href="chapter-{index}.xhtml" '
+        'media-type="application/xhtml+xml"/>'
+        for index in range(chapters)
+    )
     opf = f"""<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     {''.join(metadata)}
   </metadata>
-  <manifest/>
+  <manifest>{items}</manifest>
   <spine>
     {itemrefs}
   </spine>
@@ -66,7 +73,21 @@ def epub_bytes(
         archive.writestr("mimetype", "application/epub+zip")
         archive.writestr("META-INF/container.xml", _CONTAINER_XML)
         archive.writestr("OEBPS/content.opf", opf)
+        for index in range(chapters):
+            archive.writestr(
+                f"OEBPS/chapter-{index}.xhtml",
+                '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+                f'<p>Chapter {index}.</p></body></html>',
+            )
     return buffer.getvalue()
+
+
+def fake_transcriber(_audio: Path) -> tuple[TranscriptSegment, ...]:
+    words = tuple(
+        WordTiming(token, float(i), float(i) + 0.4)
+        for i, token in enumerate("Chapter 0 Chapter 1 Chapter 2".split())
+    )
+    return (TranscriptSegment("Chapter 0 Chapter 1 Chapter 2", 0, 6, words),)
 
 
 def upload_files(
@@ -117,6 +138,7 @@ def _free_port() -> int:
 @asynccontextmanager
 async def running_server(data_dir: Path, **kwargs: object) -> AsyncIterator[str]:
     """Serve the app on a real port for the duration of the block."""
+    kwargs.setdefault("transcriber", fake_transcriber)
     config = uvicorn.Config(
         create_app(data_dir=data_dir, **kwargs),
         host="127.0.0.1",

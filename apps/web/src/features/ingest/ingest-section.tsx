@@ -26,8 +26,7 @@ type IngestSectionProps = {
 
 /**
  * The upload cards plus the Start aligning button. Files stay in the browser;
- * starting creates a backend job (the mock progress timer) titled after the
- * EPUB file name.
+ * starting uploads them and creates a backend alignment job.
  */
 export function IngestSection({
   files,
@@ -52,7 +51,7 @@ export function IngestSection({
       <div className="grid gap-3 sm:grid-cols-2">
         <FilePickCard
           title="EPUB file"
-          description="The ebook to align."
+          description="An EPUB 3 book to align."
           badge=".epub"
           icon={BookOpen01Icon}
           accept={EPUB_ACCEPT}

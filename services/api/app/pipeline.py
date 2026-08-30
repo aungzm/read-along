@@ -221,6 +221,8 @@ def extract_sentences(epub_path: Path) -> tuple[Sentence, ...]:
     with archive:
         package_path = _package_document_path(archive)
         package = _read_xml(archive, package_path)
+        if not (package.get("version") or "").startswith("3."):
+            raise EpubError("Read-along currently requires an EPUB 3 source book.")
         manifest = package.find("{*}manifest")
         spine = package.find("{*}spine")
         if manifest is None or spine is None:
@@ -774,7 +776,7 @@ def _write_epub(
     source: Path,
     output_path: Path,
     replacements: dict[str, bytes],
-    additions: dict[str, bytes],
+    additions: dict[str, bytes | Path],
 ) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with (
@@ -789,11 +791,17 @@ def _write_epub(
             if name == "mimetype" or name in additions:
                 continue
             data = replacements.get(name)
-            if data is None:
-                data = src.read(name)
-            dst.writestr(item, data)
+            if data is not None:
+                dst.writestr(item, data)
+            else:
+                with src.open(item) as source_file, dst.open(item, "w") as target:
+                    shutil.copyfileobj(source_file, target, length=1 << 20)
         for name, data in additions.items():
-            dst.writestr(name, data)
+            if isinstance(data, Path):
+                with data.open("rb") as source_file, dst.open(name, "w") as target:
+                    shutil.copyfileobj(source_file, target, length=1 << 20)
+            else:
+                dst.writestr(name, data)
 
 
 def _run_epubcheck(path: Path) -> None:
@@ -857,11 +865,12 @@ def package_epub(
         document = _match_document(sentences, text_src)
         archive = overlay_archive_path(document)
         audio_archives.add(_resolve(posixpath.dirname(archive) or ".", audio_src))
-        clips = [
+        duration = sum(
             _parse_clock(audio.get("clipEnd", "0"))
+            - _parse_clock(audio.get("clipBegin", "0"))
             for audio in root.findall(f".//{{{SMIL_NS}}}audio")
-        ]
-        overlay_entries.append((archive, document, max(clips, default=0.0)))
+        )
+        overlay_entries.append((archive, document, duration))
         overlay_bytes[archive] = overlay.read_bytes()
 
     if len(audio_archives) != 1:
@@ -872,6 +881,10 @@ def package_epub(
 
     with source:
         package_path = _package_document_path(source)
+        collisions = (set(overlay_bytes) | {audio_archive}) & set(source.namelist())
+        if collisions:
+            name = sorted(collisions)[0]
+            raise EpubError(f"Generated resource already exists in the EPUB: {name}")
         documents = list(dict.fromkeys(sentence.document for sentence in sentences))
         replacements: dict[str, bytes] = {}
         for document in documents:
@@ -886,7 +899,7 @@ def package_epub(
         replacements[package_path] = _xml_bytes(package, _namespace(package.tag) or OPF_NS)
 
     additions = dict(overlay_bytes)
-    additions[audio_archive] = audio_path.read_bytes()
+    additions[audio_archive] = audio_path
     _write_epub(epub_path, output_path, replacements, additions)
     _validate_output(output_path)
     return output_path

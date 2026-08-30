@@ -1,10 +1,9 @@
 import { Clock01Icon, Download01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { STAGE_LABELS, type Job } from "@/lib/api"
-import { downloadResultFile, type ResultNames } from "@/features/ingest/result-file"
+import { api, STAGE_LABELS, type Job } from "@/lib/api"
 import { useCancelJob } from "./use-jobs"
 import { JobStatusBadge } from "./status-badge"
 
@@ -12,7 +11,7 @@ function isActive(job: Job) {
   return job.status === "queued" || job.status === "running"
 }
 
-function JobRow({ job, names }: { job: Job; names?: ResultNames }) {
+function JobRow({ job }: { job: Job }) {
   const cancelJob = useCancelJob()
   const active = isActive(job)
   const percent = Math.round(job.progress * 100)
@@ -50,14 +49,14 @@ function JobRow({ job, names }: { job: Job; names?: ResultNames }) {
             </Button>
           ) : null}
           {job.status === "succeeded" ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => downloadResultFile(job, names)}
+            <a
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+              href={api.downloadUrl(job.jobId)}
+              download={`${job.jobId}.epub`}
             >
               <HugeiconsIcon icon={Download01Icon} />
-              Download
-            </Button>
+              Download EPUB
+            </a>
           ) : null}
         </div>
       </div>
@@ -70,13 +69,7 @@ function JobRow({ job, names }: { job: Job; names?: ResultNames }) {
   )
 }
 
-export function JobList({
-  jobs,
-  resultNames,
-}: {
-  jobs: Job[]
-  resultNames: Record<string, ResultNames>
-}) {
+export function JobList({ jobs }: { jobs: Job[] }) {
   if (jobs.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border px-6 py-14 text-center">
@@ -94,7 +87,7 @@ export function JobList({
   return (
     <ul className="divide-y divide-border/70">
       {jobs.map((job) => (
-        <JobRow key={job.jobId} job={job} names={resultNames[job.jobId]} />
+        <JobRow key={job.jobId} job={job} />
       ))}
     </ul>
   )

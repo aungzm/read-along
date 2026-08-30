@@ -1,26 +1,17 @@
 /**
  * Client-side file handling for the ingest flow.
  *
- * Files stay in the browser for now: nothing is uploaded. These helpers only
- * validate the picked files and format them for display. The backend job is
- * the mock progress timer; the download is generated locally on completion.
+ * These helpers validate picked files before they are uploaded to the API.
  */
 
 export const EPUB_ACCEPT = ".epub,application/epub+zip";
 
-export const AUDIO_ACCEPT = "audio/*,.m4b,.mp3,.wav,.ogg,.flac,.aac,.m4a";
+export const AUDIO_ACCEPT = ".m4b,.mp3,.m4a";
 
 const AUDIO_EXTENSIONS = [
   "m4b",
   "mp3",
-  "wav",
-  "ogg",
-  "oga",
-  "flac",
-  "aac",
   "m4a",
-  "opus",
-  "wma",
 ];
 
 export function validateEpubFile(file: File): string | null {
@@ -32,10 +23,10 @@ export function validateEpubFile(file: File): string | null {
 
 export function validateAudioFile(file: File): string | null {
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-  if (file.type.startsWith("audio/") || AUDIO_EXTENSIONS.includes(extension)) {
+  if (AUDIO_EXTENSIONS.includes(extension)) {
     return null
   }
-  return "Choose an audio file, such as MP3 or M4B."
+  return "Choose an MP3, M4A, or M4B audio file."
 }
 
 export function formatFileSize(bytes: number): string {

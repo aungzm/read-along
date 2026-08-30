@@ -36,7 +36,7 @@ def book(tmp_path: Path, *, href: str = "Text/ch1.xhtml", xhtml: str | None = No
     container = """<container><rootfiles>
       <rootfile full-path="OEBPS/content.opf"/>
     </rootfiles></container>"""
-    opf = f"""<package xmlns="http://www.idpf.org/2007/opf">
+    opf = f"""<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
       <manifest><item id="one" href="{href}" media-type="application/xhtml+xml"/></manifest>
       <spine><itemref idref="one"/></spine>
     </package>"""
@@ -77,6 +77,20 @@ def test_extract_preserves_order_markup_offsets_and_original(tmp_path: Path) -> 
 def test_extract_rejects_escaped_manifest_path(tmp_path: Path) -> None:
     with pytest.raises(EpubError, match="escapes"):
         extract_sentences(book(tmp_path, href="../../other.xhtml"))
+
+
+def test_extract_rejects_epub2_until_conversion_is_supported(tmp_path: Path) -> None:
+    path = book(tmp_path)
+    with zipfile.ZipFile(path) as archive:
+        parts = {name: archive.read(name) for name in archive.namelist()}
+    parts["OEBPS/content.opf"] = parts["OEBPS/content.opf"].replace(
+        b'version="3.0"', b'version="2.0"'
+    )
+    with zipfile.ZipFile(path, "w") as archive:
+        for name, data in parts.items():
+            archive.writestr(name, data)
+    with pytest.raises(EpubError, match="EPUB 3"):
+        extract_sentences(path)
 
 
 def test_extract_rejects_missing_xhtml(tmp_path: Path) -> None:
@@ -304,7 +318,8 @@ def test_package_epub_end_to_end(tmp_path: Path) -> None:
         content_item = next(item for item in items if item.get("href") == "Text/ch1.xhtml")
         overlay_id = content_item.get("media-overlay")
         assert overlay_id
-        assert next(item for item in items if item.get("id") == overlay_id).get("href") == "Text/ch1.smil"
+        overlay_item = next(item for item in items if item.get("id") == overlay_id)
+        assert overlay_item.get("href") == "Text/ch1.smil"
         assert package.find(f".//{{{OPF_NS}}}itemref").get("media-overlay") is None
         hrefs = {item.get("id"): item.get("href") for item in items}
         assert any(value == "audio/book.mp3" for value in hrefs.values())

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from ..config import get_settings
 from ..models import Job, JobEvent, SourceFiles
@@ -25,14 +25,7 @@ EPUB_SUFFIXES = {".epub"}
 AUDIO_SUFFIXES = {
     ".m4b",
     ".mp3",
-    ".wav",
-    ".ogg",
-    ".oga",
-    ".flac",
-    ".aac",
     ".m4a",
-    ".opus",
-    ".wma",
 }
 
 
@@ -145,6 +138,17 @@ async def get_job(job_id: str, store: StoreDep) -> Job:
     if job is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown job")
     return job
+
+
+@router.get("/{job_id}/download")
+async def download_job(job_id: str, store: StoreDep) -> FileResponse:
+    job = store.get(job_id)
+    if job is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown job")
+    path = store.result_path(job_id)
+    if path is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "A completed EPUB is not available")
+    return FileResponse(path, media_type="application/epub+zip", filename=f"{job_id}.epub")
 
 
 @router.post("/{job_id}/cancel", response_model=Job)
