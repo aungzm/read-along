@@ -1,7 +1,9 @@
 import { BookOpen01Icon, HeadphonesIcon } from "@hugeicons/core-free-icons"
 import { useState } from "react"
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
 import { FilePickCard } from "./file-pick-card"
 import {
   AUDIO_ACCEPT,
@@ -21,6 +23,10 @@ type IngestSectionProps = {
   canStart: boolean
   isStarting: boolean
   isBlocked: boolean
+  /** Upload progress, 0–1, while `isStarting` is true. */
+  uploadFraction: number
+  /** Why the last attempt to start failed, if it did. */
+  errorMessage: string | null
   onStart: () => void
 };
 
@@ -34,6 +40,8 @@ export function IngestSection({
   canStart,
   isStarting,
   isBlocked,
+  uploadFraction,
+  errorMessage,
   onStart,
 }: IngestSectionProps) {
   const [epubError, setEpubError] = useState<string | null>(null)
@@ -88,6 +96,17 @@ export function IngestSection({
           }}
         />
       </div>
+      {isStarting ? (
+        <div className="space-y-1.5">
+          <div className="flex items-baseline justify-between text-xs text-muted-foreground">
+            <span>Uploading the book and narration…</span>
+            <span className="tabular-nums">
+              {Math.round(uploadFraction * 100)}%
+            </span>
+          </div>
+          <Progress value={Math.round(uploadFraction * 100)} />
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-3">
         <Button
           size="lg"
@@ -106,6 +125,12 @@ export function IngestSection({
           </p>
         ) : null}
       </div>
+      {errorMessage ? (
+        <Alert variant="destructive">
+          <AlertTitle>Could not start the alignment</AlertTitle>
+          <AlertDescription>{errorMessage}</AlertDescription>
+        </Alert>
+      ) : null}
     </div>
   )
 }

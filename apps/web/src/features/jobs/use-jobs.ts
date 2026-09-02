@@ -22,11 +22,19 @@ export function useJobs() {
   })
 }
 
+export type CreateJobVariables = {
+  epub: File
+  audio: File
+  /** Reports upload progress as a 0–1 fraction. */
+  onProgress?: (fraction: number) => void
+}
+
 export function useCreateJob() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: api.createJob,
+    mutationFn: ({ epub, audio, onProgress }: CreateJobVariables) =>
+      api.createJob({ epub, audio }, { onProgress }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: jobKeys.list }),
   })
 }

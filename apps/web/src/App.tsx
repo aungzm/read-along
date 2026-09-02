@@ -13,6 +13,7 @@ export function App() {
   const jobs = useJobs()
   const createJob = useCreateJob()
   const [files, setFiles] = useState<IngestFiles>({ epub: null, audio: null })
+  const [uploadProgress, setUploadProgress] = useState(0)
   const allJobs = jobs.data ?? []
   const activeJob =
     allJobs.find((job) => job.status === "queued" || job.status === "running") ??
@@ -30,7 +31,10 @@ export function App() {
     const epub = files.epub
     const audio = files.audio
     if (!epub || !audio || activeJob || createJob.isPending) return
-    createJob.mutate({ epub, audio })
+    // Clear the previous failure so the new attempt starts from a clean slate.
+    createJob.reset()
+    setUploadProgress(0)
+    createJob.mutate({ epub, audio, onProgress: setUploadProgress })
   }
 
   return (
@@ -44,6 +48,8 @@ export function App() {
           canStart={canStart}
           isStarting={createJob.isPending}
           isBlocked={activeJob !== null}
+          uploadFraction={uploadProgress}
+          errorMessage={createJob.error?.message ?? null}
           onStart={handleStart}
         />
 
