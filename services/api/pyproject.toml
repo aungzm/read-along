@@ -21,6 +21,8 @@ dev = [
 ]
 transcribe = [
   "faster-whisper>=1.1",
+  # faster-whisper uses av.open(metadata_errors=...), removed in PyAV 19.
+  "av>=11,<19",
 ]
 
 [build-system]
