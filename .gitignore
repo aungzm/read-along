@@ -29,6 +29,7 @@ htmlcov/
 
 # Uploaded files (one directory per job)
 services/api/var/
+services/api/benchmarks/data/
 
 # Editors and OS
 .vscode/*

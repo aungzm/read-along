@@ -62,6 +62,9 @@ settling on the model; use a multilingual model if the narration is not English.
 
 ## Tests
 
+For downloadable real-book fixtures and automated real-transcription integration
+tests, see [benchmarks/README.md](benchmarks/README.md).
+
 ```sh
 pnpm api:test                   # python -m pytest
 ```
