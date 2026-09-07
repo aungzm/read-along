@@ -26,6 +26,7 @@ from xml.etree import ElementTree as ET
 from xml.etree.ElementTree import Element
 
 from .epub import EpubError, _package_document_path, _read_xml
+from .sentences import SentenceSegmenter
 
 OPF_NS = "http://www.idpf.org/2007/opf"
 DC_NS = "http://purl.org/dc/elements/1.1/"
@@ -36,7 +37,6 @@ MEDIA_NS = "http://www.idpf.org/epub/vocab/overlays/#"
 
 _BLOCKS = {"p", "li", "blockquote", "div", *(f"h{i}" for i in range(1, 7))}
 _IGNORED = {"head", "script", "style", "nav", "svg", "math"}
-_SENTENCE_END = re.compile(r"(?<=[.!?])(?=\s)")
 _WORD = re.compile(r"[0-9a-z']+")
 _AUDIO_TYPES = {
     ".mp3": "audio/mpeg",
@@ -221,6 +221,8 @@ def extract_sentences(epub_path: Path) -> tuple[Sentence, ...]:
     with archive:
         package_path = _package_document_path(archive)
         package = _read_xml(archive, package_path)
+        language = package.findtext(f"{{{OPF_NS}}}metadata/{{{DC_NS}}}language")
+        segmenter = SentenceSegmenter(language)
         if not (package.get("version") or "").startswith("3."):
             raise EpubError("Read-along currently requires an EPUB 3 source book.")
         manifest = package.find("{*}manifest")
@@ -249,19 +251,17 @@ def extract_sentences(epub_path: Path) -> tuple[Sentence, ...]:
             used_ids = {node.get("id") for node in root.iter() if node.get("id")}
             sentence_number = 0
             for start, text in _text_runs(root):
-                for part in _SENTENCE_END.split(text):
-                    trimmed = part.strip()
-                    if trimmed:
-                        beginning = start + len(part) - len(part.lstrip())
-                        anchor = f"ra-sentence-{sentence_number + 1}"
-                        while anchor in used_ids:
-                            anchor += "-new"
-                        used_ids.add(anchor)
-                        sentence_number += 1
-                        sentences.append(
-                            Sentence(document, anchor, trimmed, beginning, beginning + len(trimmed))
+                for beginning, end in segmenter.spans(text):
+                    anchor = f"ra-sentence-{sentence_number + 1}"
+                    while anchor in used_ids:
+                        anchor += "-new"
+                    used_ids.add(anchor)
+                    sentence_number += 1
+                    sentences.append(
+                        Sentence(
+                            document, anchor, text[beginning:end], start + beginning, start + end
                         )
-                    start += len(part)
+                    )
     return tuple(sentences)
 
 

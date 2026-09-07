@@ -41,8 +41,14 @@ uploaded files and results remain in `data_dir`.
 ### Pipeline contracts
 
 - `extract_sentences()` reads spine XHTML into sentence text, stable IDs, and
-  source character offsets. Sentence splitting uses basic punctuation rules and
-  does not handle abbreviations or every XHTML layout.
+  source character offsets. Sentence splitting uses pySBD's language-specific
+  rules, with English corrections for French titles such as `Mme.` and `Mlle.`.
+  It preserves original text and inline markup and keeps sentences inside their
+  text blocks. The OPF language selects the rules (`en-US` uses `en`); missing
+  language defaults to English. Unsupported languages retain whole text blocks.
+  Quoted speech can form a single unit containing several punctuated phrases.
+  Segmentation supports more languages than the current English-oriented word
+  matcher; this does not imply multilingual alignment support.
 - `transcribe_audio()` wraps faster-whisper with word timestamps. It needs the
   optional `transcribe` extra (`pip install -e ".[transcribe]"`) and a model
   download on first use.

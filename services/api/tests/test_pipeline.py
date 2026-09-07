@@ -110,6 +110,60 @@ def test_extract_keeps_nested_blocks_separate(tmp_path: Path) -> None:
     ]
 
 
+def test_abbreviations_across_markup_preserve_packaged_text(tmp_path: Path) -> None:
+    xhtml = """<html xmlns="http://www.w3.org/1999/xhtml"><body>
+      <p>  Mme. <em>Sofronie</em> sold hair. “No!” she said.  </p>
+      <p>Dr. <a href="#end">Watson</a> left.</p><p id="end">No!</p>
+    </body></html>"""
+    path = book(tmp_path, xhtml=xhtml)
+    sentences = extract_sentences(path)
+    assert [s.text for s in sentences] == [
+        "Mme. Sofronie sold hair.", "“No!” she said.", "Dr. Watson left.", "No!",
+    ]
+    source = "".join(fromstring(xhtml).itertext())
+    for sentence in sentences:
+        assert source[sentence.text_start:sentence.text_end] == sentence.text
+    assert extract_sentences(path) == sentences
+    audio = tmp_path / "audio.mp3"
+    audio.write_bytes(b"ID3-audio")
+    overlays = build_overlays(_timings(sentences), "OEBPS/audio/book.mp3", tmp_path / "stage")
+    output = package_epub(path, audio, sentences, overlays, tmp_path / "result.epub")
+    with zipfile.ZipFile(output) as epub:
+        root = fromstring(epub.read("OEBPS/Text/ch1.xhtml"))
+    assert "".join(root.itertext()) == source
+    assert root.find(f".//{{{XHTML_NS}}}em") is not None
+    assert root.find(f".//{{{XHTML_NS}}}a").get("href") == "#end"
+    anchors = {
+        node.get("id"): "".join(node.itertext())
+        for node in root.iter(f"{{{XHTML_NS}}}span")
+    }
+    assert all(anchors[s.anchor_id] == s.text for s in sentences)
+
+
+@pytest.mark.parametrize(
+    "language, text, expected",
+    [
+        ("ja-JP", "これは文です。次の文です！", ["これは文です。", "次の文です！"]),
+        ("xx", "First. Second!", ["First. Second!"]),
+    ],
+)
+def test_extract_uses_package_language(
+    tmp_path: Path, language: str, text: str, expected: list[str]
+) -> None:
+    path = book(tmp_path, xhtml=f'<html xmlns="{XHTML_NS}"><body><p>{text}</p></body></html>')
+    with zipfile.ZipFile(path) as archive:
+        parts = {name: archive.read(name) for name in archive.namelist()}
+    metadata = f'<metadata><dc:language xmlns:dc="http://purl.org/dc/elements/1.1/">{language}'
+    metadata += '</dc:language></metadata><manifest>'
+    parts["OEBPS/content.opf"] = parts["OEBPS/content.opf"].replace(
+        b"<manifest>", metadata.encode()
+    )
+    with zipfile.ZipFile(path, "w") as archive:
+        for name, content in parts.items():
+            archive.writestr(name, content)
+    assert [sentence.text for sentence in extract_sentences(path)] == expected
+
+
 def test_review_ready_partial_and_empty() -> None:
     a = Sentence("chapter.xhtml", "a", "One.", 0, 4)
     b = Sentence("chapter.xhtml", "b", "Two.", 5, 9)
