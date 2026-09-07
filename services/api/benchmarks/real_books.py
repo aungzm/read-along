@@ -7,6 +7,7 @@ import hashlib
 import json
 import posixpath
 import re
+import ssl
 import sys
 import time
 import urllib.request
@@ -16,6 +17,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 from xml.sax.saxutils import escape
 
+import certifi
 from defusedxml.ElementTree import fromstring
 from fastapi.testclient import TestClient
 
@@ -55,6 +57,12 @@ PAIRS = [
 ]
 
 
+# Some archive.org storage nodes serve certificate chains that Windows' root store
+# rejects as expired even though every certificate is in date. Verify against
+# certifi's bundle so downloads do not depend on the local trust store.
+SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+
+
 def download(url: str, path: Path) -> None:
     if path.exists():
         return
@@ -62,7 +70,10 @@ def download(url: str, path: Path) -> None:
     request = urllib.request.Request(url, headers={"User-Agent": "read-along-benchmark/1.0"})
     temporary = path.with_suffix(".partial")
     try:
-        with urllib.request.urlopen(request, timeout=120) as response, temporary.open("wb") as out:
+        with (
+            urllib.request.urlopen(request, timeout=120, context=SSL_CONTEXT) as response,
+            temporary.open("wb") as out,
+        ):
             while chunk := response.read(1024 * 1024):
                 out.write(chunk)
         temporary.replace(path)
