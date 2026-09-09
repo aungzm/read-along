@@ -61,6 +61,11 @@ uploaded files and results remain in `data_dir`.
 - `build_overlays()` writes SMIL per content document; `package_epub()` anchors
   sentences, adds the audio and overlays, updates the OPF, and validates the
   result with EPUBCheck when `epubcheck` or `EPUBCHECK_JAR` is available.
+  Sentence anchors contain exactly their source text. Inline ancestors remain
+  intact where possible; when a sentence crosses an inline boundary, split
+  fragments keep formatting and link attributes, with the original ID only on
+  the first fragment. ID-only CSS selectors therefore apply to that fragment,
+  while classes and inline styles carry across all fragments.
 
 `TranscriptionOptions` defaults to faster-whisper's `small.en` model on CPU with
 `int8` inference and voice activity detection. Test it against real books before

@@ -597,45 +597,57 @@ def _rebuild(element: Element, items: list[Element | str]) -> None:
             previous = item
 
 
-def _wrap_content(element: Element, lo: int, hi: int, span: Element) -> None:
-    """Wrap content offsets [lo, hi) of an element with ``span``.
+def _split_content(
+    items: list[Element | str], offset: int
+) -> tuple[list[Element | str], list[Element | str]]:
+    """Split mixed content exactly, splitting inline ancestors when necessary.
 
-    Text at the edges is split exactly. An inline element that is only partly
-    inside the range moves wholly into the span, which pulls a few extra
-    characters into the highlight but keeps the markup instead of splitting it.
+    The first fragment retains the original element and its ID. Continuations
+    copy formatting and link attributes but never duplicate IDs.
     """
-
-    total = _content_len(element)
-    if lo <= 0 and hi >= total:
-        _rebuild(span, _detach(element))
-        element.append(span)
-        return
-
     before: list[Element | str] = []
-    inside: list[Element | str] = []
     after: list[Element | str] = []
     cursor = 0
-    for item in _detach(element):
+    for item in items:
         length = len(item) if isinstance(item, str) else _content_len(item)
         start, end = cursor, cursor + length
         cursor = end
-        if end <= lo:
+        if end <= offset:
             before.append(item)
-        elif start >= hi:
+        elif start >= offset:
             after.append(item)
         elif isinstance(item, str):
-            left = item[: max(0, lo - start)]
-            middle = item[max(0, lo - start) : min(length, hi - start)]
-            right = item[min(length, hi - start) :]
-            if left:
-                before.append(left)
-            if middle:
-                inside.append(middle)
-            if right:
-                after.append(right)
+            before.append(item[: offset - start])
+            after.append(item[offset - start :])
         else:
-            inside.append(item)
+            continuation = Element(item.tag, {
+                key: value for key, value in item.attrib.items()
+                if key not in {"id", "{http://www.w3.org/XML/1998/namespace}id"}
+            })
+            left, right = _split_content(_detach(item), offset - start)
+            _rebuild(item, left)
+            _rebuild(continuation, right)
+            before.append(item)
+            after.append(continuation)
+    return before, after
 
+
+def _wrap_content(element: Element, lo: int, hi: int, span: Element) -> None:
+    """Wrap exactly [lo, hi), without pulling adjacent sentences into the span."""
+    if not 0 <= lo < hi <= _content_len(element):
+        raise EpubError("Sentence anchor is outside its source element.")
+    # Keep original inline ancestors intact when the range lies wholly within
+    # one. This preserves their identity and ID-based styling where possible.
+    offset = len(element.text or "")
+    for child in element:
+        end = offset + _content_len(child)
+        if offset <= lo and hi <= end:
+            _wrap_content(child, lo - offset, hi - offset, span)
+            return
+        offset = end + len(child.tail or "")
+
+    before, rest = _split_content(_detach(element), lo)
+    inside, after = _split_content(rest, hi - lo)
     _rebuild(element, before + [span] + after)
     _rebuild(span, inside)
 
@@ -672,6 +684,7 @@ def _find_block(spans: list[tuple[Element, int]], sentence: Sentence) -> tuple[E
 
 
 def _anchor_document(root: Element, sentences: tuple[Sentence, ...]) -> None:
+    original_text = "".join(root.itertext())
     spans = _block_spans(root)
     groups: dict[int, tuple[Element, int, list[Sentence]]] = {}
     for sentence in sentences:
@@ -680,10 +693,22 @@ def _anchor_document(root: Element, sentences: tuple[Sentence, ...]) -> None:
 
     for block, start, items in groups.values():
         namespace = _namespace(block.tag)
-        for sentence in sorted(items, key=lambda item: item.text_start):
+        # Right-to-left insertion keeps later anchors outside subsequent cuts.
+        for sentence in sorted(items, key=lambda item: item.text_start, reverse=True):
             span = Element(f"{{{namespace}}}span") if namespace else Element("span")
             span.set("id", sentence.anchor_id)
             _wrap_content(block, sentence.text_start - start, sentence.text_end - start, span)
+
+    if "".join(root.itertext()) != original_text:
+        raise EpubError("Sentence anchoring changed the source text.")
+    by_id: dict[str, list[Element]] = {}
+    for node in root.iter():
+        if identifier := node.get("id"):
+            by_id.setdefault(identifier, []).append(node)
+    for sentence in sentences:
+        targets = by_id.get(sentence.anchor_id, [])
+        if len(targets) != 1 or "".join(targets[0].itertext()) != sentence.text:
+            raise EpubError(f"Sentence anchor {sentence.anchor_id} does not match its source text.")
 
 
 def _audio_media_type(name: str) -> str:

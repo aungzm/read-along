@@ -141,6 +141,52 @@ def test_abbreviations_across_markup_preserve_packaged_text(tmp_path: Path) -> N
 
 
 @pytest.mark.parametrize(
+    "body",
+    [
+        '<em id="style">First sentence. Second sentence.</em>',
+        'First <em id="style">sentence. Second</em> sentence.',
+        'First <em id="style"><strong>sentence. Second</strong></em> sentence.',
+        '<a id="link" href="#end" class="note">First sentence. Second sentence.</a>',
+        'First <a id="link" href="#end" class="note">sentence. Second</a> sentence.',
+        'First <em id="style">sentence. Second sentence. Third</em> sentence.',
+        'First sentence.<br/><img id="image" src="image.png"/> Second sentence.',
+    ],
+)
+def test_packaged_highlights_are_exact_across_inline_boundaries(
+    tmp_path: Path, body: str
+) -> None:
+    xhtml = f'<html xmlns="{XHTML_NS}"><body><p id="end">{body}</p></body></html>'
+    path = book(tmp_path, xhtml=xhtml)
+    original = path.read_bytes()
+    source = fromstring(xhtml)
+    sentences = extract_sentences(path)
+    audio = tmp_path / "audio.mp3"
+    audio.write_bytes(b"ID3-audio")
+    overlays = build_overlays(_timings(sentences), "OEBPS/audio/book.mp3", tmp_path / "stage")
+    output = package_epub(path, audio, sentences, overlays, tmp_path / "result.epub")
+    with zipfile.ZipFile(output) as archive:
+        root = fromstring(archive.read("OEBPS/Text/ch1.xhtml"))
+    assert "".join(root.itertext()) == "".join(source.itertext())
+    assert path.read_bytes() == original
+    identifiers = [node.get("id") for node in root.iter() if node.get("id")]
+    assert len(identifiers) == len(set(identifiers))
+    for node in source.iter():
+        if node.get("id"):
+            assert identifiers.count(node.get("id")) == 1
+    generated_ids = {s.anchor_id for s in sentences}
+    for sentence in sentences:
+        target = next(node for node in root.iter() if node.get("id") == sentence.anchor_id)
+        assert "".join(target.itertext()) == sentence.text
+        assert not any(node.get("id") in generated_ids for node in list(target.iter())[1:])
+    for link in root.iter(f"{{{XHTML_NS}}}a"):
+        assert link.get("href") == "#end"
+        assert link.get("class") == "note"
+    assert len(list(root.iter(f"{{{XHTML_NS}}}img"))) == len(
+        list(source.iter(f"{{{XHTML_NS}}}img"))
+    )
+
+
+@pytest.mark.parametrize(
     "language, text, expected",
     [
         ("ja-JP", "これは文です。次の文です！", ["これは文です。", "次の文です！"]),
