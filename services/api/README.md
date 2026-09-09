@@ -49,6 +49,10 @@ uploaded files and results remain in `data_dir`.
   Quoted speech can form a single unit containing several punctuated phrases.
   Segmentation supports more languages than the current English-oriented word
   matcher; this does not imply multilingual alignment support.
+  All body text is eligible, including direct body text, verse, table cells,
+  definitions and captions. Blocks and explicit line breaks separate text runs.
+  Head content and `nav`, `script`, `style`, `template`, `svg` and `math` subtrees
+  are excluded; their text still counts toward source character offsets.
 - `transcribe_audio()` wraps faster-whisper with word timestamps. It needs the
   optional `transcribe` extra (`pip install -e ".[transcribe]"`) and a model
   download on first use.

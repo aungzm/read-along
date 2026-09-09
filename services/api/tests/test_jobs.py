@@ -133,6 +133,25 @@ async def test_incomplete_alignment_never_offers_download(tmp_path: Path) -> Non
     assert response.status_code == 409
 
 
+async def test_unmatched_table_text_prevents_false_full_coverage(tmp_path: Path) -> None:
+    with zipfile.ZipFile(io.BytesIO(epub_bytes())) as archive:
+        parts = {name: archive.read(name) for name in archive.namelist()}
+    parts["OEBPS/chapter-0.xhtml"] = parts["OEBPS/chapter-0.xhtml"].replace(
+        b"</body>", b"<table><tr><td>Unspoken table text.</td></tr></table></body>"
+    )
+    data = io.BytesIO()
+    with zipfile.ZipFile(data, "w") as archive:
+        for name, content in parts.items():
+            archive.writestr(name, content)
+    async with make_client(tmp_path) as client:
+        job_id = (await create_job(client, epub=data.getvalue())).json()["jobId"]
+        job = await wait_for_terminal(client, job_id)
+        response = await client.get(f"/api/jobs/{job_id}/download")
+    assert job["status"] == "failed"
+    assert "3/4 sentences matched" in job["error"]
+    assert response.status_code == 409
+
+
 async def test_transcription_error_fails_the_job(tmp_path: Path) -> None:
     def unavailable(_path: Path):
         raise RuntimeError("Transcription needs the optional dependency")

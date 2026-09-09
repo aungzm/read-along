@@ -35,8 +35,13 @@ SMIL_NS = "http://www.w3.org/ns/SMIL"
 EPUB_NS = "http://www.idpf.org/2007/ops"
 MEDIA_NS = "http://www.idpf.org/epub/vocab/overlays/#"
 
-_BLOCKS = {"p", "li", "blockquote", "div", *(f"h{i}" for i in range(1, 7))}
-_IGNORED = {"head", "script", "style", "nav", "svg", "math"}
+_BLOCKS = {
+    "body", "main", "section", "article", "header", "footer", "aside", "address",
+    "p", "li", "blockquote", "div", "pre", "figure", "figcaption", "dl", "dt", "dd",
+    "ul", "ol", "table", "caption", "thead", "tbody", "tfoot", "tr", "td", "th",
+    *(f"h{i}" for i in range(1, 7)),
+}
+_IGNORED = {"head", "script", "style", "nav", "svg", "math", "template"}
 _WORD = re.compile(r"[0-9a-z']+")
 _AUDIO_TYPES = {
     ".mp3": "audio/mpeg",
@@ -170,32 +175,48 @@ def _archive_path(package_path: str, href: str) -> str:
 
 
 def _text_runs(root: Element) -> list[tuple[int, str]]:
-    """Collect narratable text runs with offsets in the original document text."""
+    """Collect all eligible body text, retaining offsets into all document text.
+
+    Every body text node belongs to its nearest structural block, or the body
+    itself. Inline markup joins within a run; block boundaries, line breaks and
+    explicitly excluded subtrees separate runs, even when they contain no text.
+    """
 
     runs: list[tuple[Element, int, str]] = []
     offset = 0
+    can_merge = False
 
     def add(text: str | None, block: Element | None, ignored: bool) -> None:
-        nonlocal offset
+        nonlocal offset, can_merge
         if not text:
             return
         if block is not None and not ignored:
-            if runs and runs[-1][0] is block and runs[-1][1] + len(runs[-1][2]) == offset:
+            if can_merge and runs and runs[-1][0] is block:
                 owner, start, previous = runs[-1]
                 runs[-1] = (owner, start, previous + text)
             else:
                 runs.append((block, offset, text))
+            can_merge = True
+        else:
+            can_merge = False
         offset += len(text)
 
     def walk(node: Element, block: Element | None = None, ignored: bool = False) -> None:
-        ignored = ignored or _local_name(node.tag) in _IGNORED
-        if _local_name(node.tag) in _BLOCKS and not ignored:
+        nonlocal can_merge
+        name = _local_name(node.tag)
+        ignored = ignored or name in _IGNORED
+        boundary = name in _BLOCKS or name in {"br", "hr"} or ignored
+        if boundary:
+            can_merge = False
+        if name == "body" or (block is not None and name in _BLOCKS and not ignored):
             block = node
         add(node.text, block, ignored)
         for child in node:
             walk(child, block, ignored)
             # Tails belong to the parent, not the child.
             add(child.tail, block, ignored)
+        if boundary:
+            can_merge = False
 
     walk(root)
     return [(start, text) for _, start, text in runs]

@@ -187,6 +187,88 @@ def test_packaged_highlights_are_exact_across_inline_boundaries(
 
 
 @pytest.mark.parametrize(
+    "body, expected",
+    [
+        ("Direct body text.", ["Direct body text."]),
+        ("<span>Inline body text.</span>", ["Inline body text."]),
+        ("<custom>Unknown element text.</custom>", ["Unknown element text."]),
+        ("<pre>First line.\nSecond line.</pre>", ["First line.", "Second line."]),
+        ("<dl><dt>A term.</dt><dd>Its definition.</dd></dl>", ["A term.", "Its definition."]),
+        (
+            "<table><caption>A table.</caption><tr>"
+            "<th>A heading.</th><td>A cell.</td></tr></table>",
+            ["A table.", "A heading.", "A cell."],
+        ),
+        (
+            '<figure><img src="image.png"/><figcaption>A caption.</figcaption></figure>',
+            ["A caption."],
+        ),
+        (
+            "<section>Before.<p>Inside.</p>After.</section>",
+            ["Before.", "Inside.", "After."],
+        ),
+        ("<p>First line<br/>Second line</p>", ["First line", "Second line"]),
+        ("<p>Before<nav>Excluded.</nav>After.</p>", ["Before", "After."]),
+        ("<article>Before<hr/>After.</article>", ["Before", "After."]),
+    ],
+)
+def test_all_eligible_body_text_is_extracted_and_anchored(
+    tmp_path: Path, body: str, expected: list[str]
+) -> None:
+    xhtml = f'''<html xmlns="{XHTML_NS}"><head><title>Not narration.</title></head>
+      <body>{body}<nav>Navigation.</nav><script>Script.</script><style>Style.</style>
+      <template>Template.</template><svg>SVG.</svg><math>Math.</math></body></html>'''
+    path = book(tmp_path, xhtml=xhtml)
+    sentences = extract_sentences(path)
+    assert [sentence.text for sentence in sentences] == expected
+    original = fromstring(xhtml)
+    source_text = "".join(original.itertext())
+    covered: set[int] = set()
+    for sentence in sentences:
+        assert source_text[sentence.text_start:sentence.text_end] == sentence.text
+        positions = set(range(sentence.text_start, sentence.text_end))
+        assert not covered & positions
+        covered.update(positions)
+
+    # Account for every eligible non-whitespace character independently of the
+    # extractor's structural-block list, including text under unknown elements.
+    eligible: set[int] = set()
+    offset = 0
+
+    def visit(node, in_body=False, excluded=False):
+        nonlocal offset
+        name = node.tag.rsplit("}", 1)[-1]
+        in_body = in_body or name == "body"
+        excluded = excluded or name in {"head", "nav", "script", "style", "template", "svg", "math"}
+
+        def count(text):
+            nonlocal offset
+            for char in text or "":
+                if in_body and not excluded and not char.isspace():
+                    eligible.add(offset)
+                offset += 1
+
+        count(node.text)
+        for child in node:
+            visit(child, in_body, excluded)
+            count(child.tail)
+
+    visit(original)
+    assert {pos for pos in covered if not source_text[pos].isspace()} == eligible
+
+    audio = tmp_path / "audio.mp3"
+    audio.write_bytes(b"ID3-audio")
+    overlays = build_overlays(_timings(sentences), "OEBPS/audio/book.mp3", tmp_path / "stage")
+    output = package_epub(path, audio, sentences, overlays, tmp_path / "result.epub")
+    with zipfile.ZipFile(output) as archive:
+        root = fromstring(archive.read("OEBPS/Text/ch1.xhtml"))
+    assert "".join(root.itertext()) == source_text
+    for sentence in sentences:
+        node = next(node for node in root.iter() if node.get("id") == sentence.anchor_id)
+        assert "".join(node.itertext()) == sentence.text
+
+
+@pytest.mark.parametrize(
     "language, text, expected",
     [
         ("ja-JP", "これは文です。次の文です！", ["これは文です。", "次の文です！"]),
