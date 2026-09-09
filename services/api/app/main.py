@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .events import EventBus
+from .limits import UploadLimitsMiddleware
 from .models import Stage
 from .pipeline import TranscriptSegment, transcribe_audio
 from .routers import health, jobs
@@ -39,7 +40,18 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.data_dir = Path(data_dir) if data_dir is not None else settings.data_dir
-    app.state.store = JobStore(EventBus(), stage_seconds=stage_seconds, transcriber=transcriber)
+    app.state.store = JobStore(
+        EventBus(), stage_seconds=stage_seconds, transcriber=transcriber,
+        max_concurrent_jobs=settings.max_concurrent_jobs,
+        max_pending_jobs=settings.max_pending_jobs,
+    )
+
+    app.add_middleware(
+        UploadLimitsMiddleware,
+        max_bytes=settings.request_body_limit,
+        max_uploads=settings.max_concurrent_uploads,
+        has_job_capacity=app.state.store.has_capacity,
+    )
 
     app.add_middleware(
         CORSMiddleware,

@@ -25,7 +25,7 @@ from urllib.parse import unquote, urlsplit
 from xml.etree import ElementTree as ET
 from xml.etree.ElementTree import Element
 
-from .epub import EpubError, _package_document_path, _read_xml
+from .epub import EpubError, _package_document_path, _read_xml, validate_archive
 from .sentences import SentenceSegmenter
 
 OPF_NS = "http://www.idpf.org/2007/opf"
@@ -240,6 +240,7 @@ def extract_sentences(epub_path: Path) -> tuple[Sentence, ...]:
 
     sentences: list[Sentence] = []
     with archive:
+        validate_archive(archive)
         package_path = _package_document_path(archive)
         package = _read_xml(archive, package_path)
         language = package.findtext(f"{{{OPF_NS}}}metadata/{{{DC_NS}}}language")
@@ -829,6 +830,7 @@ def _write_epub(
         zipfile.ZipFile(source) as src,
         zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as dst,
     ):
+        validate_archive(src)
         info = zipfile.ZipInfo("mimetype")
         info.compress_type = zipfile.ZIP_STORED
         dst.writestr(info, b"application/epub+zip")
@@ -926,6 +928,7 @@ def package_epub(
         raise EpubError(f"Audio file not found: {audio_path}")
 
     with source:
+        validate_archive(source)
         package_path = _package_document_path(source)
         collisions = (set(overlay_bytes) | {audio_archive}) & set(source.namelist())
         if collisions:

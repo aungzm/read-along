@@ -24,8 +24,32 @@ Routes live under `/api`:
 
 Uploads are streamed to disk under `READ_ALONG_DATA_DIR` (default `var/`), one
 directory per job. `READ_ALONG_MAX_UPLOAD_BYTES` caps each file and defaults to
-2 GiB. Uploaded files are untrusted: EPUB package documents are parsed with
-`defusedxml` and no XML part larger than 5 MiB is read.
+2 GiB. The request body is limited before multipart parsing, using both the
+declared Content-Length and a count of actual incoming bytes. The default total
+budget is twice the file cap plus 1 MiB for multipart overhead; set
+`READ_ALONG_MAX_REQUEST_BYTES` to override it. Oversized requests return 413,
+including chunked requests and requests that understate Content-Length.
+
+`READ_ALONG_MAX_CONCURRENT_UPLOADS` defaults to 2. Processing defaults to one
+running job (`READ_ALONG_MAX_CONCURRENT_JOBS`) and at most four admitted jobs
+including queued work (`READ_ALONG_MAX_PENDING_JOBS`). Excess requests return
+429 with Retry-After. Jobs stay queued until a processing slot is available.
+Cancelling a job cannot interrupt an active Python thread: it keeps its slot
+until that stage exits and does not proceed to subsequent stages. Shutdown also
+waits for active stages, which may take several minutes during transcription.
+
+Uploaded EPUBs are untrusted. Before reading their content, the app checks at most
+10,000 ZIP entries, 64 MiB per expanded entry, and 512 MiB total expanded size.
+These are configurable with `READ_ALONG_MAX_ARCHIVE_ENTRIES`,
+`READ_ALONG_MAX_ARCHIVE_ENTRY_BYTES` and `READ_ALONG_MAX_ARCHIVE_BYTES`.
+Duplicate ZIP entry names are rejected. XML uses `defusedxml` and retains a
+separate 5 MiB per-document cap. Packaging rechecks the input archive too.
+
+Limits are per API process. Use one API worker with the in-memory job store;
+multiple workers do not share queues, limits, or job metadata. An exposed service
+still needs authentication, proxy limits/timeouts, and storage quotas/retention.
+Finished and failed job workspaces are retained; these limits are not a disk
+cleanup policy.
 
 ## Pipeline
 

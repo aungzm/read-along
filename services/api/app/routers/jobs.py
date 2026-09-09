@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from ..config import get_settings
 from ..models import Job, JobEvent, SourceFiles
-from ..store import JobStore, new_job_id
+from ..store import JobCapacityError, JobStore, new_job_id
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -66,7 +66,7 @@ async def _save_upload(
             written += len(chunk)
             if written > max_bytes:
                 raise HTTPException(
-                    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    status.HTTP_413_CONTENT_TOO_LARGE,
                     "The upload is larger than the configured limit.",
                 )
             sink.write(chunk)
@@ -92,6 +92,12 @@ async def create_job(
     """
 
     settings = get_settings()
+    if not store.has_capacity():
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "The processing queue is full. Try again shortly.",
+            headers={"Retry-After": "5"},
+        )
     job_id = new_job_id()
     workspace = data_dir / job_id
     workspace.mkdir(parents=True, exist_ok=True)
@@ -111,7 +117,7 @@ async def create_job(
             suffixes=AUDIO_SUFFIXES,
             max_bytes=settings.max_upload_bytes,
         )
-    except HTTPException:
+    except BaseException:
         shutil.rmtree(workspace, ignore_errors=True)
         raise
 
@@ -123,13 +129,19 @@ async def create_job(
     )
     title = Path(source.epub_name).stem or "Untitled"
 
-    return store.create(
-        job_id=job_id,
-        title=title,
-        source=source,
-        epub_path=epub_path,
-        audio_path=audio_path,
-    )
+    try:
+        return store.create(
+            job_id=job_id,
+            title=title,
+            source=source,
+            epub_path=epub_path,
+            audio_path=audio_path,
+        )
+    except JobCapacityError as exc:
+        shutil.rmtree(workspace, ignore_errors=True)
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, str(exc), headers={"Retry-After": "5"}
+        ) from exc
 
 
 @router.get("/{job_id}", response_model=Job)

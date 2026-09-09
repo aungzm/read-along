@@ -17,6 +17,8 @@ from xml.etree.ElementTree import Element
 
 from defusedxml.ElementTree import ParseError, fromstring
 
+from .config import get_settings
+
 CONTAINER_PATH = "META-INF/container.xml"
 
 # Guard against a zip bomb or an absurd package document filling memory.
@@ -25,6 +27,25 @@ MAX_XML_BYTES = 5_000_000
 
 class EpubError(Exception):
     """An uploaded file is not a readable EPUB."""
+
+
+def validate_archive(archive: zipfile.ZipFile) -> None:
+    """Bound the entire input archive before reading or copying any members."""
+    settings = get_settings()
+    entries = archive.infolist()
+    if len(entries) > settings.max_archive_entries:
+        raise EpubError("The EPUB contains too many archive entries.")
+    total = 0
+    names: set[str] = set()
+    for entry in entries:
+        if entry.filename in names:
+            raise EpubError("The EPUB contains duplicate archive entries.")
+        names.add(entry.filename)
+        if entry.file_size > settings.max_archive_entry_bytes:
+            raise EpubError("An EPUB archive entry exceeds the expanded-size limit.")
+        total += entry.file_size
+        if total > settings.max_archive_bytes:
+            raise EpubError("The EPUB exceeds the total expanded-size limit.")
 
 
 @dataclass(frozen=True)
@@ -84,6 +105,7 @@ def inspect_epub(path: Path, *, fallback_title: str | None = None) -> EpubInfo:
         raise EpubError("The EPUB file is not a readable zip archive.") from exc
 
     with archive:
+        validate_archive(archive)
         package = _read_xml(archive, _package_document_path(archive))
         spine = package.find(".//{*}spine")
         chapters = len(spine.findall("{*}itemref")) if spine is not None else 0
