@@ -949,6 +949,12 @@ def package_epub(
 
     additions = dict(overlay_bytes)
     additions[audio_archive] = audio_path
-    _write_epub(epub_path, output_path, replacements, additions)
-    _validate_output(output_path)
+    temporary = output_path.with_name(f".{output_path.stem}.partial{output_path.suffix}")
+    try:
+        _write_epub(epub_path, temporary, replacements, additions)
+        _validate_output(temporary)
+        temporary.replace(output_path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
     return output_path

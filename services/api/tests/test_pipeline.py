@@ -515,3 +515,21 @@ def test_package_epub_end_to_end(tmp_path: Path) -> None:
 def test_overlay_archive_path_keeps_directory() -> None:
     assert overlay_archive_path("OEBPS/Text/ch1.xhtml") == "OEBPS/Text/ch1.smil"
     assert overlay_archive_path("ch1.xhtml") == "ch1.smil"
+
+
+def test_failed_packaging_never_publishes_partial_result(tmp_path: Path, monkeypatch) -> None:
+    def reject(_path):
+        raise EpubError("Validation failed.")
+
+    monkeypatch.setattr("app.pipeline._validate_output", reject)
+    path = book(tmp_path)
+    sentences = extract_sentences(path)
+    audio = tmp_path / "audio.mp3"
+    audio.write_bytes(b"audio")
+    overlays = build_overlays(_timings(sentences), "OEBPS/audio/book.mp3", tmp_path / "stage")
+    output = tmp_path / "result.epub"
+    output.write_bytes(b"previous complete result")
+    with pytest.raises(EpubError, match="Validation failed"):
+        package_epub(path, audio, sentences, overlays, output)
+    assert output.read_bytes() == b"previous complete result"
+    assert not (tmp_path / ".result.partial.epub").exists()

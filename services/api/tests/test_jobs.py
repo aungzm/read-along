@@ -9,8 +9,10 @@ from support import (
     FAST_STAGES,
     SLOW_STAGES,
     create_job,
+    empty_transcriber,
     epub_bytes,
     make_client,
+    unavailable_transcriber,
     upload_files,
     wait_for_terminal,
 )
@@ -123,7 +125,7 @@ async def test_completed_job_downloads_a_synced_epub(tmp_path: Path) -> None:
 
 
 async def test_incomplete_alignment_never_offers_download(tmp_path: Path) -> None:
-    async with make_client(tmp_path, transcriber=lambda _path: ()) as client:
+    async with make_client(tmp_path, transcriber=empty_transcriber) as client:
         job_id = (await create_job(client)).json()["jobId"]
         job = await wait_for_terminal(client, job_id)
         response = await client.get(f"/api/jobs/{job_id}/download")
@@ -153,10 +155,7 @@ async def test_unmatched_table_text_prevents_false_full_coverage(tmp_path: Path)
 
 
 async def test_transcription_error_fails_the_job(tmp_path: Path) -> None:
-    def unavailable(_path: Path):
-        raise RuntimeError("Transcription needs the optional dependency")
-
-    async with make_client(tmp_path, transcriber=unavailable) as client:
+    async with make_client(tmp_path, transcriber=unavailable_transcriber) as client:
         job_id = (await create_job(client)).json()["jobId"]
         job = await wait_for_terminal(client, job_id)
 

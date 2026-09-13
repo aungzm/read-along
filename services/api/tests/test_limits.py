@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
-import threading
+import multiprocessing
 import zipfile
 from pathlib import Path
 
@@ -10,10 +10,11 @@ import httpx
 import pytest
 from starlette import formparsers
 from support import (
+    blocking_transcriber,
     create_job,
     epub_bytes,
-    fake_transcriber,
     make_client,
+    recording_transcriber,
     upload_files,
     wait_for_terminal,
 )
@@ -177,19 +178,12 @@ async def test_queue_race_rejection_cleans_uploaded_workspace(tmp_path: Path, mo
 
 async def test_archive_rejected_before_transcription(tmp_path: Path, configure) -> None:
     configure(max_archive_bytes=100)
-    called = False
-
-    def transcriber(_path):
-        nonlocal called
-        called = True
-        return ()
-
-    async with make_client(tmp_path, transcriber=transcriber) as client:
+    async with make_client(tmp_path, transcriber=recording_transcriber) as client:
         response = await create_job(client)
         job = await wait_for_terminal(client, response.json()["jobId"])
     assert job["status"] == "failed"
     assert "expanded-size" in job["error"]
-    assert not called
+    assert not list(tmp_path.glob("*/transcriber-called"))
 
 
 @pytest.mark.parametrize(
@@ -258,31 +252,26 @@ async def test_job_queue_and_processing_remain_bounded_after_cancellation(
     tmp_path: Path, configure
 ) -> None:
     configure(max_concurrent_jobs=1, max_pending_jobs=2)
-    started, release = threading.Event(), threading.Event()
-    calls = []
-
-    def transcriber(path):
-        calls.append(path)
-        if len(calls) == 1:
-            started.set()
-            if not release.wait(10):
-                raise TimeoutError("test worker was not released")
-        return fake_transcriber(path)
-
-    app = create_app(data_dir=tmp_path, transcriber=transcriber)
+    app = create_app(data_dir=tmp_path, transcriber=blocking_transcriber)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
         try:
             first_id = (await create_job(client)).json()["jobId"]
-            assert await asyncio.to_thread(started.wait, 2)
+            for _ in range(500):
+                if (tmp_path / "blocked.pid").exists():
+                    break
+                await asyncio.sleep(0.01)
+            else:
+                pytest.fail("Transcription did not start.")
+            pid = int((tmp_path / "blocked.pid").read_text())
             second_id = (await create_job(client)).json()["jobId"]
             await asyncio.sleep(0.02)
             assert (await client.get(f"/api/jobs/{second_id}")).json()["status"] == "queued"
-            assert len(calls) == 1
+            assert len(list(tmp_path.glob("*/transcriber.pid"))) == 1
             response = await create_job(client)
             assert response.status_code == 429
-            assert len(list(tmp_path.iterdir())) == 2
+            assert len([path for path in tmp_path.iterdir() if path.is_dir()]) == 2
 
             async def rejected_body():
                 raise AssertionError("A full queue must reject before multipart parsing.")
@@ -291,17 +280,17 @@ async def test_job_queue_and_processing_remain_bounded_after_cancellation(
             assert (await client.post("/api/jobs", content=rejected_body())).status_code == 429
             cancelled = await client.post(f"/api/jobs/{first_id}/cancel")
             assert cancelled.json()["status"] == "cancelled"
-            # Repeated cancellation must not free the worker slot either.
+            assert pid not in {process.pid for process in multiprocessing.active_children()}
+            heartbeat = tmp_path / first_id / "heartbeat"
+            size = heartbeat.stat().st_size
+            # Cancellation returns only after the subprocess has exited.
             await client.post(f"/api/jobs/{first_id}/cancel")
-            await asyncio.sleep(0.02)
-            assert len(calls) == 1
-            assert not app.state.store.has_capacity()
-            release.set()
+            await asyncio.sleep(0.05)
+            assert heartbeat.stat().st_size == size
             assert (await wait_for_terminal(client, second_id))["status"] == "succeeded"
-            assert len(calls) == 2
+            assert len(list(tmp_path.glob("*/transcriber.pid"))) == 2
             assert app.state.store.has_capacity()
         finally:
-            release.set()
             await app.state.store.aclose()
 
 

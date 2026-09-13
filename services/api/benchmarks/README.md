@@ -15,8 +15,9 @@ No separately running server is needed. The model downloads on first use.
 Allow several minutes or longer depending on the machine.
 
 Use `--pair gift-of-the-magi` or `--pair tell-tale-heart` to run just one.
-`--timeout 3600` sets the job deadline in seconds; Python cannot forcibly stop
-an already-running transcription thread, so shutdown may wait for it.
+`--timeout 3600` sets the job deadline in seconds. On timeout, cancellation stops
+the job's subprocess and waits for cleanup rather than leaving transcription
+running in a background thread.
 
 ## Sources and preparation
 

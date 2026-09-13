@@ -4,6 +4,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from support import epub_bytes, saved_transcriber
 
 from benchmarks.real_books import PAIRS, prepare, validate_result
 
@@ -43,3 +44,17 @@ def test_validate_download_resolves_sentence_anchors(tmp_path: Path, anchor: str
             validate_result(path)
     else:
         validate_result(path)
+
+
+def test_benchmark_collects_transcript_from_worker_process(tmp_path: Path, monkeypatch) -> None:
+    from benchmarks import real_books
+
+    (tmp_path / "book.epub").write_bytes(epub_bytes())
+    (tmp_path / "audio.mp3").write_bytes(b"audio")
+    monkeypatch.setattr(real_books, "transcribe_fixture", saved_transcriber)
+    report = real_books.run(tmp_path, timeout=15)
+    assert report["passed"]
+    assert report["coverage"] == 1
+    assert len(report["timings"]) == 3
+    assert (tmp_path / "transcript.json").exists()
+    validate_result(tmp_path / "result.epub")

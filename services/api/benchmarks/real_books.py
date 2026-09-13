@@ -136,19 +136,18 @@ def prepare(pair: dict[str, str], directory: Path) -> None:
     (directory / "sources.json").write_text(json.dumps(provenance, indent=2), encoding="utf-8")
 
 
+def transcribe_fixture(path: Path):
+    """Importable worker callback; persist results rather than mutating parent state."""
+    transcript = transcribe_audio(path)
+    (path.parent / "transcript.json").write_text(
+        json.dumps([asdict(segment) for segment in transcript], indent=2), encoding="utf-8"
+    )
+    return transcript
+
+
 def run(directory: Path, timeout: float) -> dict:
-    transcript = ()
-
-    def transcriber(path: Path):
-        nonlocal transcript
-        transcript = transcribe_audio(path)
-        (directory / "transcript.json").write_text(
-            json.dumps([asdict(segment) for segment in transcript], indent=2), encoding="utf-8"
-        )
-        return transcript
-
     started = time.monotonic()
-    app = create_app(data_dir=directory / "jobs", transcriber=transcriber)
+    app = create_app(data_dir=directory / "jobs", transcriber=transcribe_fixture)
     with TestClient(app) as client:
         with (
             (directory / "book.epub").open("rb") as epub,
@@ -175,9 +174,7 @@ def run(directory: Path, timeout: float) -> dict:
                 break
             if time.monotonic() - started > timeout:
                 client.post(f"/api/jobs/{job_id}/cancel")
-                raise TimeoutError(
-                    "Job exceeded timeout (in-flight transcription may still finish)."
-                )
+                raise TimeoutError("Job exceeded timeout; its processing worker was stopped.")
             time.sleep(1)
         download_response = client.get(f"/api/jobs/{job_id}/download")
         if job["status"] == "succeeded":
@@ -186,6 +183,22 @@ def run(directory: Path, timeout: float) -> dict:
             validate_result(directory / "result.epub")
         elif download_response.status_code != 409:
             raise AssertionError("Failed job incorrectly offered a download")
+    transcript_path = directory / "jobs" / job_id / "transcript.json"
+    transcript = ()
+    if transcript_path.exists():
+        from app.pipeline import TranscriptSegment, WordTiming
+
+        saved = transcript_path.read_text(encoding="utf-8")
+        (directory / "transcript.json").write_text(saved, encoding="utf-8")
+        transcript = tuple(
+            TranscriptSegment(
+                segment["text"],
+                segment["start"],
+                segment["end"],
+                tuple(WordTiming(**word) for word in segment["words"]),
+            )
+            for segment in json.loads(saved)
+        )
     sentences = extract_sentences(directory / "book.epub")
     timings = align_sentences(directory / "audio.mp3", locate_passages(sentences, transcript))
     review = review_alignment(sentences, timings)

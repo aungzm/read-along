@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
+import os
 import socket
+import subprocess
+import sys
+import time
 import zipfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from pathlib import Path
 
 import httpx
@@ -59,7 +65,7 @@ def epub_bytes(
     opf = f"""<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    {''.join(metadata)}
+    {"".join(metadata)}
   </metadata>
   <manifest>{items}</manifest>
   <spine>
@@ -77,7 +83,7 @@ def epub_bytes(
             archive.writestr(
                 f"OEBPS/chapter-{index}.xhtml",
                 '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
-                f'<p>Chapter {index}.</p></body></html>',
+                f"<p>Chapter {index}.</p></body></html>",
             )
     return buffer.getvalue()
 
@@ -88,6 +94,59 @@ def fake_transcriber(_audio: Path) -> tuple[TranscriptSegment, ...]:
         for i, token in enumerate("Chapter 0 Chapter 1 Chapter 2".split())
     )
     return (TranscriptSegment("Chapter 0 Chapter 1 Chapter 2", 0, 6, words),)
+
+
+def empty_transcriber(_audio: Path) -> tuple[TranscriptSegment, ...]:
+    return ()
+
+
+def unavailable_transcriber(_audio: Path):
+    raise RuntimeError("Transcription needs the optional dependency")
+
+
+def recording_transcriber(audio: Path):
+    (audio.parent / "transcriber-called").touch()
+    return fake_transcriber(audio)
+
+
+def saved_transcriber(audio: Path):
+    transcript = fake_transcriber(audio)
+    (audio.parent / "transcript.json").write_text(
+        json.dumps([asdict(segment) for segment in transcript]), encoding="utf-8"
+    )
+    return transcript
+
+
+def blocking_transcriber(audio: Path):
+    (audio.parent / "transcriber.pid").write_text(str(os.getpid()))
+    marker = audio.parent.parent / "blocked.pid"
+    if not marker.exists():
+        marker.write_text(str(os.getpid()))
+        while True:
+            with (audio.parent / "heartbeat").open("ab") as handle:
+                handle.write(b".")
+            time.sleep(0.02)
+    return fake_transcriber(audio)
+
+
+def blocking_packager(epub, audio, sentences, overlays, output):
+    output.with_name(f".{output.stem}.partial{output.suffix}").write_bytes(b"partial EPUB")
+    (output.parent / "packager.pid").write_text(str(os.getpid()))
+    while True:
+        with (output.parent / "heartbeat").open("ab") as handle:
+            handle.write(b".")
+        time.sleep(0.02)
+
+
+def crashing_transcriber(_audio: Path):
+    os._exit(9)
+
+
+def launch_child(directory: Path):
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+    (directory / "child.pid").write_text(str(child.pid))
+    while True:
+        time.sleep(0.02)
 
 
 def upload_files(

@@ -34,9 +34,13 @@ including chunked requests and requests that understate Content-Length.
 running job (`READ_ALONG_MAX_CONCURRENT_JOBS`) and at most four admitted jobs
 including queued work (`READ_ALONG_MAX_PENDING_JOBS`). Excess requests return
 429 with Retry-After. Jobs stay queued until a processing slot is available.
-Cancelling a job cannot interrupt an active Python thread: it keeps its slot
-until that stage exits and does not proceed to subsequent stages. Shutdown also
-waits for active stages, which may take several minutes during transcription.
+Each job runs its stages in an owned spawned subprocess. Cancellation terminates
+that worker and its subprocess tree, waits for it to exit, removes partial EPUB
+output, then reports `cancelled` and releases the processing slot. Shutdown uses
+the same cleanup. Other jobs and uploaded source files remain untouched.
+Packaging validates a temporary EPUB before atomically publishing `result.epub`.
+Worker callbacks injected by tests or benchmarks must be importable top-level
+functions; closures and changes to parent-process memory are not supported.
 
 Uploaded EPUBs are untrusted. Before reading their content, the app checks at most
 10,000 ZIP entries, 64 MiB per expanded entry, and 512 MiB total expanded size.

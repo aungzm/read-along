@@ -19,6 +19,7 @@ from .pipeline import (
     review_alignment,
     transcribe_audio,
 )
+from .worker import ProcessWorker
 
 
 def utcnow() -> datetime:
@@ -55,6 +56,8 @@ class JobStore:
         self._max_pending_jobs = max_pending_jobs
         self._jobs: dict[str, Job] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._process_workers: dict[str, ProcessWorker] = {}
+        self._cancel_locks: dict[str, asyncio.Lock] = {}
         # Where each job's uploaded files live. Kept off the wire model.
         self._epub_paths: dict[str, Path] = {}
         self._audio_paths: dict[str, Path] = {}
@@ -110,47 +113,50 @@ class JobStore:
         if job is None:
             return None
 
-        if job.status not in ("succeeded", "failed", "cancelled"):
-            task = self._tasks.get(job_id)
-            if task is not None:
-                task.cancel()
-            self._apply(job, status="cancelled")
-            self._finish(job, "cancelled")
+        async with self._cancel_locks.setdefault(job_id, asyncio.Lock()):
+            if job.status not in ("succeeded", "failed", "cancelled"):
+                task = self._tasks.get(job_id)
+                if task is not None:
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+                if job.status == "failed":
+                    return job
+                self._apply(job, status="cancelled", stage=None)
+                self._finish(job, "cancelled")
         return job
 
     async def aclose(self) -> None:
         tasks = list(self._tasks.values())
-        self._tasks.clear()
-        for task in tasks:
-            task.cancel()
+        await asyncio.gather(*(self.cancel(job_id) for job_id in list(self._tasks)))
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _run(self, job_id: str) -> None:
         try:
             async with self._workers:
-                await self._process(job_id)
+                worker = ProcessWorker()
+                self._process_workers[job_id] = worker
+                try:
+                    await self._process(job_id)
+                finally:
+                    await worker.aclose()
+                    self._process_workers.pop(job_id, None)
+        except asyncio.CancelledError:
+            # The owned process has stopped and released its file handles.
+            workspace = self._epub_paths[job_id].parent
+            (workspace / ".result.partial.epub").unlink(missing_ok=True)
+            (workspace / "result.epub").unlink(missing_ok=True)
+            raise
+        except Exception as exc:
+            job = self._jobs[job_id]
+            if job.status not in ("succeeded", "failed", "cancelled"):
+                self._apply(job, status="failed", stage=None, error=str(exc))
+                self._finish(job, "failed")
         finally:
             self._tasks.pop(job_id, None)
 
-    async def _work(self, function, *args, **kwargs):
-        """Keep the processing slot until a cancelled thread actually exits."""
-        worker = asyncio.create_task(asyncio.to_thread(function, *args, **kwargs))
-        try:
-            return await asyncio.shield(worker)
-        except asyncio.CancelledError:
-            # Cancelling a to_thread await cannot kill the thread. Drain it even
-            # if shutdown issues another cancellation, without freeing its slot.
-            while not worker.done():
-                try:
-                    await asyncio.shield(worker)
-                except asyncio.CancelledError:
-                    continue
-                except Exception:
-                    break
-            if not worker.cancelled():
-                worker.exception()
-            raise
+    async def _work(self, job_id: str, function, *args, **kwargs):
+        return await self._process_workers[job_id].run(function, *args, **kwargs)
 
     async def _process(self, job_id: str) -> None:
         job = self._jobs.get(job_id)
@@ -164,14 +170,14 @@ class JobStore:
             await self._extract(job)
             epub_path = self._epub_paths[job_id]
             audio_path = self._audio_paths[job_id]
-            sentences = await self._work(extract_sentences, epub_path)
+            sentences = await self._work(job_id, extract_sentences, epub_path)
             self._apply(job, progress=0.2, stage="transcribe")
             await self._pause("transcribe")
-            transcript = await self._work(self._transcriber, audio_path)
+            transcript = await self._work(job_id, self._transcriber, audio_path)
             self._apply(job, progress=0.4, stage="align")
             await self._pause("align")
-            matches = await self._work(locate_passages, sentences, transcript)
-            timings = await self._work(align_sentences, audio_path, matches)
+            matches = await self._work(job_id, locate_passages, sentences, transcript)
+            timings = await self._work(job_id, align_sentences, audio_path, matches)
             report = review_alignment(sentences, timings)
             if report.status != "ready":
                 raise ValueError(
@@ -182,11 +188,12 @@ class JobStore:
             await self._pause("build")
             audio_archive = f"OEBPS/audio/read-along{audio_path.suffix.lower()}"
             overlays = await self._work(
-                build_overlays, timings, audio_archive, epub_path.parent / "overlays"
+                job_id, build_overlays, timings, audio_archive, epub_path.parent / "overlays"
             )
             self._apply(job, progress=0.8, stage="package")
             await self._pause("package")
             await self._work(
+                job_id,
                 package_epub,
                 epub_path,
                 audio_path,
@@ -217,7 +224,7 @@ class JobStore:
         if path is None:
             raise EpubError("The uploaded EPUB is no longer available.")
 
-        info = await self._work(self._epub_reader, path, fallback_title=job.title)
+        info = await self._work(job.job_id, self._epub_reader, path, fallback_title=job.title)
         self._apply(
             job,
             title=info.title,
