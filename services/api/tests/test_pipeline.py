@@ -454,8 +454,9 @@ def test_build_overlays_writes_smil(tmp_path: Path) -> None:
     overlays = build_overlays(_timings(sentences), "OEBPS/audio/book.mp3", tmp_path / "stage")
 
     assert len(overlays) == 1
-    assert overlays[0] == tmp_path / "stage" / "OEBPS" / "Text" / "ch1.smil"
-    root = fromstring(overlays[0].read_bytes())
+    assert overlays[0].document == "OEBPS/Text/ch1.xhtml"
+    assert overlays[0].path == tmp_path / "stage" / "OEBPS" / "Text" / "ch1.xhtml.smil"
+    root = fromstring(overlays[0].path.read_bytes())
     text = root.find(f".//{{{SMIL_NS}}}text")
     audio = root.find(f".//{{{SMIL_NS}}}audio")
     assert text is not None and text.get("src") == "ch1.xhtml#s1"
@@ -484,7 +485,7 @@ def test_package_epub_end_to_end(tmp_path: Path) -> None:
         assert archive.infolist()[0].filename == "mimetype"
         assert archive.infolist()[0].compress_type == zipfile.ZIP_STORED
         names = set(archive.namelist())
-        assert {"OEBPS/Text/ch1.smil", audio_name, "OEBPS/content.opf"} <= names
+        assert {"OEBPS/Text/ch1.xhtml.smil", audio_name, "OEBPS/content.opf"} <= names
 
         packaged_root = fromstring(archive.read("OEBPS/Text/ch1.xhtml"))
         assert "".join(packaged_root.itertext()) == source_text
@@ -501,20 +502,20 @@ def test_package_epub_end_to_end(tmp_path: Path) -> None:
         overlay_id = content_item.get("media-overlay")
         assert overlay_id
         overlay_item = next(item for item in items if item.get("id") == overlay_id)
-        assert overlay_item.get("href") == "Text/ch1.smil"
+        assert overlay_item.get("href") == "Text/ch1.xhtml.smil"
         assert package.find(f".//{{{OPF_NS}}}itemref").get("media-overlay") is None
         hrefs = {item.get("id"): item.get("href") for item in items}
         assert any(value == "audio/book.mp3" for value in hrefs.values())
         assert package.find(f".//{{{OPF_NS}}}meta[@property='media:duration']") is not None
-        smil = fromstring(archive.read("OEBPS/Text/ch1.smil"))
+        smil = fromstring(archive.read("OEBPS/Text/ch1.xhtml.smil"))
         assert smil.find(f".//{{{SMIL_NS}}}par") is not None
 
     assert path.read_bytes() == original
 
 
 def test_overlay_archive_path_keeps_directory() -> None:
-    assert overlay_archive_path("OEBPS/Text/ch1.xhtml") == "OEBPS/Text/ch1.smil"
-    assert overlay_archive_path("ch1.xhtml") == "ch1.smil"
+    assert overlay_archive_path("OEBPS/Text/ch1.xhtml") == "OEBPS/Text/ch1.xhtml.smil"
+    assert overlay_archive_path("ch1.xhtml") == "ch1.xhtml.smil"
 
 
 def test_failed_packaging_never_publishes_partial_result(tmp_path: Path, monkeypatch) -> None:

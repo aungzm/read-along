@@ -90,7 +90,13 @@ uploaded files and results remain in `data_dir`.
   guessing, and their thresholds still need tuning on real book/audio pairs.
 - `review_alignment()` checks coverage and rejects invalid or out-of-order timing
   data. It checks structural validity, not acoustic accuracy.
-- `build_overlays()` writes SMIL per content document; `package_epub()` anchors
+- `build_overlays()` writes SMIL per content document and returns each file with
+  its full source-document identity. Overlay archive names retain the original
+  extension (`Part1/chapter.xhtml.smil`), so both repeated basenames in different
+  folders and same-stem `.html`/`.xhtml` files remain distinct. SMIL and manifest
+  references use URI-encoded paths. Packaging resolves every text reference
+  against its overlay's archive directory and verifies sentence targets.
+  `package_epub()` anchors
   sentences, adds the audio and overlays, updates the OPF, and validates the
   result with EPUBCheck when `epubcheck` or `EPUBCHECK_JAR` is available.
   Sentence anchors contain exactly their source text. Inline ancestors remain

@@ -117,7 +117,7 @@ async def test_completed_job_downloads_a_synced_epub(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/epub+zip"
     with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
-        assert "OEBPS/chapter-0.smil" in archive.namelist()
+        assert "OEBPS/chapter-0.xhtml.smil" in archive.namelist()
         assert "OEBPS/audio/read-along.mp3" in archive.namelist()
         package = archive.read("OEBPS/content.opf")
         assert b'media-overlay="ra-overlay-' in package

@@ -21,7 +21,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree as ET
 from xml.etree.ElementTree import Element
 
@@ -129,6 +129,18 @@ class SentenceTiming:
     sentence: Sentence
     start: float
     end: float
+
+
+@dataclass(frozen=True)
+class Overlay:
+    """A generated SMIL file with its full source-document identity."""
+
+    document: str
+    path: Path
+
+    @property
+    def archive_path(self) -> str:
+        return overlay_archive_path(self.document)
 
 
 @dataclass(frozen=True)
@@ -507,9 +519,9 @@ def review_alignment(
 def overlay_archive_path(document: str) -> str:
     """The archive path of the SMIL file built next to a content document."""
 
-    directory, _, name = document.rpartition("/")
-    stem = name.rsplit(".", 1)[0]
-    return f"{directory}/{stem}.smil" if directory else f"{stem}.smil"
+    # Retain the extension so chapter.html and chapter.xhtml cannot overwrite
+    # each other's generated overlay within the same directory.
+    return f"{document}.smil"
 
 
 def _clock(seconds: float) -> str:
@@ -537,14 +549,14 @@ def _xml_bytes(root: Element, default_ns: str | None = None) -> bytes:
 
 def build_overlays(
     timings: tuple[SentenceTiming, ...], audio_name: str, output_dir: Path
-) -> tuple[Path, ...]:
+) -> tuple[Overlay, ...]:
     """Write SMIL documents mapping XHTML sentence IDs to audio clip ranges.
 
     ``audio_name`` is the audio's archive path; each SMIL references it relative
     to its own directory. Files are grouped by content document, placed under
     ``output_dir`` at the archive path from :func:`overlay_archive_path`, and
-    returned in sorted document order. Use EPUB Media Overlay ``par`` elements
-    to pair text references with audio clipBegin/clipEnd.
+    returned with their full source identity in sorted document order. Use
+    ``par`` elements to pair text references with audio clipBegin/clipEnd.
     """
 
     grouped: dict[str, list[SentenceTiming]] = {}
@@ -552,7 +564,7 @@ def build_overlays(
         grouped.setdefault(timing.sentence.document, []).append(timing)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    written: list[Path] = []
+    written: list[Overlay] = []
     for document in sorted(grouped):
         archive = overlay_archive_path(document)
         base = posixpath.dirname(archive) or "."
@@ -567,16 +579,18 @@ def build_overlays(
             par = ET.SubElement(seq, f"{{{SMIL_NS}}}par")
             par.set("id", f"par-{timing.sentence.anchor_id}")
             text = ET.SubElement(par, f"{{{SMIL_NS}}}text")
-            text.set("src", f"{text_ref}#{timing.sentence.anchor_id}")
+            text.set(
+                "src", f"{quote(text_ref, safe='/')}#{quote(timing.sentence.anchor_id, safe='')}"
+            )
             audio = ET.SubElement(par, f"{{{SMIL_NS}}}audio")
-            audio.set("src", audio_ref)
+            audio.set("src", quote(audio_ref, safe="/"))
             audio.set("clipBegin", _clock(timing.start))
             audio.set("clipEnd", _clock(timing.end))
 
         path = output_dir / Path(*archive.split("/"))
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(_xml_bytes(smil, SMIL_NS))
-        written.append(path)
+        written.append(Overlay(document, path))
     return tuple(written)
 
 
@@ -737,21 +751,6 @@ def _audio_media_type(name: str) -> str:
     return _AUDIO_TYPES.get(posixpath.splitext(name)[1].lower(), "audio/mpeg")
 
 
-def _match_document(sentences: tuple[Sentence, ...], text_src: str) -> str:
-    target = unquote(urlsplit(text_src).path).rsplit("/", 1)[-1]
-    candidates = list(
-        dict.fromkeys(s.document for s in sentences if s.document.rsplit("/", 1)[-1] == target)
-    )
-    if len(candidates) != 1:
-        raise EpubError(f"Cannot match overlay text reference {text_src!r} to a document.")
-    return candidates[0]
-
-
-def _first_src(root: Element, tag: str) -> str | None:
-    element = root.find(f".//{{{SMIL_NS}}}{tag}")
-    return element.get("src") if element is not None else None
-
-
 def _update_package(
     package: Element,
     package_path: str,
@@ -779,7 +778,7 @@ def _update_package(
     audio_id = unique("ra-audio")
     audio_item = ET.SubElement(manifest, qa("item"))
     audio_item.set("id", audio_id)
-    audio_item.set("href", posixpath.relpath(audio_archive, base))
+    audio_item.set("href", quote(posixpath.relpath(audio_archive, base), safe="/"))
     audio_item.set("media-type", _audio_media_type(audio_archive))
 
     overlay_ids: dict[str, str] = {}
@@ -788,7 +787,7 @@ def _update_package(
         overlay_ids[document] = identifier
         item = ET.SubElement(manifest, qa("item"))
         item.set("id", identifier)
-        item.set("href", posixpath.relpath(archive, base))
+        item.set("href", quote(posixpath.relpath(archive, base), safe="/"))
         item.set("media-type", "application/smil+xml")
 
     for item in manifest.findall(qa("item")):
@@ -884,7 +883,7 @@ def package_epub(
     epub_path: Path,
     audio_path: Path,
     sentences: tuple[Sentence, ...],
-    overlays: tuple[Path, ...],
+    overlays: tuple[Overlay, ...],
     output_path: Path,
 ) -> Path:
     """Copy the original EPUB, add sentence anchors, audio, and SMIL, then validate.
@@ -896,37 +895,57 @@ def package_epub(
     result is checked structurally and with EPUBCheck when it is installed.
     """
 
-    try:
-        source = zipfile.ZipFile(epub_path)
-    except (zipfile.BadZipFile, OSError) as exc:
-        raise EpubError("The EPUB file is not a readable zip archive.") from exc
-
     overlay_entries: list[tuple[str, str, float]] = []
     overlay_bytes: dict[str, bytes] = {}
     audio_archives: set[str] = set()
+    expected: dict[str, set[str]] = {}
+    for sentence in sentences:
+        expected.setdefault(sentence.document, set()).add(sentence.anchor_id)
+    seen_documents: set[str] = set()
     for overlay in overlays:
-        root = ET.fromstring(overlay.read_bytes())
-        text_src = _first_src(root, "text")
-        audio_src = _first_src(root, "audio")
-        if not text_src or not audio_src:
-            raise EpubError(f"Overlay {overlay.name} is missing a text or audio reference.")
-        document = _match_document(sentences, text_src)
-        archive = overlay_archive_path(document)
-        audio_archives.add(_resolve(posixpath.dirname(archive) or ".", audio_src))
+        document, archive = overlay.document, overlay.archive_path
+        if document not in expected or document in seen_documents:
+            raise EpubError("Overlay references an unknown or duplicate source document.")
+        seen_documents.add(document)
+        data = overlay.path.read_bytes()
+        root = ET.fromstring(data)
+        base = posixpath.dirname(archive) or "."
+        targets: list[str] = []
+        for text in root.findall(f".//{{{SMIL_NS}}}text"):
+            reference = urlsplit(text.get("src", ""))
+            target = _resolve(base, reference._replace(fragment="").geturl())
+            if target != document:
+                raise EpubError("Overlay text reference does not match its full source path.")
+            targets.append(unquote(reference.fragment))
+        audios = root.findall(f".//{{{SMIL_NS}}}audio")
+        if (
+            set(targets) != expected[document]
+            or len(targets) != len(expected[document])
+            or len(audios) != len(targets)
+        ):
+            raise EpubError("Overlay must reference each source sentence exactly once with audio.")
+        for audio in audios:
+            audio_archives.add(_resolve(base, audio.get("src", "")))
         duration = sum(
             _parse_clock(audio.get("clipEnd", "0"))
             - _parse_clock(audio.get("clipBegin", "0"))
-            for audio in root.findall(f".//{{{SMIL_NS}}}audio")
+            for audio in audios
         )
         overlay_entries.append((archive, document, duration))
-        overlay_bytes[archive] = overlay.read_bytes()
+        overlay_bytes[archive] = data
 
+    if seen_documents != set(expected):
+        raise EpubError("Overlays do not cover every source document.")
     if len(audio_archives) != 1:
         raise EpubError("Overlays do not agree on a single audio file.")
     audio_archive = audio_archives.pop()
     if not audio_path.exists():
         raise EpubError(f"Audio file not found: {audio_path}")
 
+    try:
+        source = zipfile.ZipFile(epub_path)
+    except (zipfile.BadZipFile, OSError) as exc:
+        raise EpubError("The EPUB file is not a readable zip archive.") from exc
     with source:
         validate_archive(source)
         package_path = _package_document_path(source)

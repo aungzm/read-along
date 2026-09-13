@@ -100,6 +100,12 @@ def empty_transcriber(_audio: Path) -> tuple[TranscriptSegment, ...]:
     return ()
 
 
+def multi_document_transcriber(_audio: Path) -> tuple[TranscriptSegment, ...]:
+    text = "Document 0 Final line Document 1 Final line"
+    words = tuple(WordTiming(token, float(i), i + 0.4) for i, token in enumerate(text.split()))
+    return (TranscriptSegment(text, 0, 8, words),)
+
+
 def unavailable_transcriber(_audio: Path):
     raise RuntimeError("Transcription needs the optional dependency")
 
