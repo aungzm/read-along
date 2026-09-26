@@ -22,6 +22,19 @@ Routes live under `/api`:
 | POST   | `/api/jobs/{id}/cancel`  | Cancel a queued or running job.                 |
 | GET    | `/api/jobs/{id}/events`  | Server-sent events for a job's progress.        |
 
+Event streams subscribe before reading their initial snapshot. A terminal
+snapshot closes the stream immediately; terminal progress is delivered as a
+`done` event. Slow subscribers keep the latest state rather than dropping the
+completion event. Heartbeats also check current state to recover a missing
+completion publication. Published events are detached per-subscriber snapshots,
+including nested metadata.
+
+The web app closes streams on terminal status, refetches the job list on stream
+errors/reconnects and browser focus/network recovery, and polls every five seconds
+while jobs are active or the list request has failed. Polling stops when the list
+is healthy and idle. A restarted API's empty in-memory list clears stale browser
+jobs; it does not restore those jobs or their download access.
+
 Uploads are streamed to disk under `READ_ALONG_DATA_DIR` (default `var/`), one
 directory per job. `READ_ALONG_MAX_UPLOAD_BYTES` caps each file and defaults to
 2 GiB. The request body is limited before multipart parsing, using both the

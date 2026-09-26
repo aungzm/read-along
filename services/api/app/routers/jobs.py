@@ -187,20 +187,36 @@ async def job_events(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown job")
 
     async def stream() -> AsyncIterator[str]:
-        yield _format_event(JobEvent(type="snapshot", job=job))
-
         async with store.bus.subscribe(job_id) as queue:
+            # Subscribe before reading state or yielding bytes. Completion
+            # during snapshot delivery is then either in the snapshot or queue.
+            current = store.get(job_id)
+            if current is None:
+                return
+            terminal = {"succeeded", "failed", "cancelled"}
+            finished = current.status in terminal
+            yield _format_event(JobEvent(type="snapshot", job=current))
+            if finished:
+                return
             while True:
                 if await request.is_disconnected():
                     break
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=HEARTBEAT_SECONDS)
                 except TimeoutError:
+                    # State is authoritative even if a producer missed an event.
+                    current = store.get(job_id)
+                    if current is None:
+                        return
+                    if current.status in terminal:
+                        yield _format_event(JobEvent(type="done", job=current))
+                        return
                     yield ": keepalive\n\n"
                     continue
+                if event.type == "done" or event.job.status in terminal:
+                    yield _format_event(JobEvent(type="done", job=event.job))
+                    return
                 yield _format_event(event)
-                if event.type == "done":
-                    break
 
     return StreamingResponse(
         stream(),

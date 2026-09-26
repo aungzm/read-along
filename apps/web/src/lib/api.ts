@@ -70,6 +70,10 @@ export type JobEvent = {
   job: Job
 }
 
+export function isActiveJob(job: Pick<Job, "status">): boolean {
+  return job.status === "queued" || job.status === "running"
+}
+
 export class ApiError extends Error {
   readonly status: number
 
@@ -195,7 +199,8 @@ function uploadJob(
 export const api = {
   health: () => request<Health>("/health"),
 
-  listJobs: () => request<Job[]>("/jobs"),
+  listJobs: ({ signal }: { signal?: AbortSignal } = {}) =>
+    request<Job[]>("/jobs", { signal }),
 
   createJob: (files: { epub: File; audio: File }, options?: UploadOptions) =>
     uploadJob(files, options),

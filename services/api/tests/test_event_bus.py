@@ -76,3 +76,28 @@ async def test_successive_events_keep_their_publication_states() -> None:
         received = [queue.get_nowait() for _ in range(3)]
     assert [event.job.progress for event in received] == [0.2, 0.8, 1]
     assert [event.job.status for event in received] == ["running", "running", "succeeded"]
+
+
+async def test_full_queue_keeps_terminal_event_instead_of_old_progress() -> None:
+    bus = EventBus(queue_size=1)
+    current = job()
+    async with bus.subscribe(current.job_id) as queue:
+        bus.publish(current.job_id, JobEvent(type="progress", job=current))
+        current.progress = 0.8
+        bus.publish(current.job_id, JobEvent(type="progress", job=current))
+        current.status = "succeeded"
+        current.progress = 1
+        bus.publish(current.job_id, JobEvent(type="done", job=current))
+        assert queue.qsize() == 1
+        event = queue.get_nowait()
+        assert event.type == "done"
+        assert event.job.status == "succeeded"
+        queue.task_done()
+        await queue.join()
+    assert not bus._subscribers
+
+
+@pytest.mark.parametrize("size", [0, -1])
+async def test_event_queue_cannot_be_unbounded(size: int) -> None:
+    with pytest.raises(ValueError, match="positive size"):
+        EventBus(queue_size=size)

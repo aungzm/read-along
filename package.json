@@ -13,6 +13,7 @@
     "build": "pnpm --filter @read-along/web build",
     "preview": "pnpm --filter @read-along/web preview",
     "typecheck": "pnpm --filter @read-along/web typecheck",
+    "test": "pnpm --filter @read-along/web test",
     "lint": "pnpm --filter @read-along/web lint",
     "format": "pnpm --filter @read-along/web format",
     "api:dev": "pnpm --filter @read-along/api dev",

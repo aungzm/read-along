@@ -46,6 +46,9 @@ pnpm dev
 Open <http://localhost:5173>. The API badge and the jobs list read from the
 service on port 8000, which the dev server proxies under `/api`.
 
+Web tests use Vitest and jsdom. Use an up-to-date patch release of Node 22 or 24
+LTS, or Node 26, for the web tooling.
+
 ## Scripts
 
 Run from the repository root:
@@ -55,6 +58,7 @@ Run from the repository root:
 | `pnpm dev`       | Start the web dev server.             |
 | `pnpm build`     | Build the web app.                    |
 | `pnpm typecheck` | Type-check the web app.               |
+| `pnpm test`      | Test web job progress and recovery.  |
 | `pnpm lint`      | Lint the web app.                     |
 | `pnpm api:dev`   | Start the API (activate the venv).    |
 | `pnpm api:test`  | Run the API tests.                    |

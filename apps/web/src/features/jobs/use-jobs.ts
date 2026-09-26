@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
-import { api } from "@/lib/api"
+import { api, isActiveJob } from "@/lib/api"
+
+export const JOB_RECOVERY_INTERVAL = 5_000
 
 export const jobKeys = {
   health: ["health"] as const,
@@ -18,7 +20,16 @@ export function useHealth() {
 export function useJobs() {
   return useQuery({
     queryKey: jobKeys.list,
-    queryFn: api.listJobs,
+    queryFn: ({ signal }) => api.listJobs({ signal }),
+    // SSE is the fast path, not the sole source of truth. In particular, a
+    // restarted API returns an empty list rather than leaving cached work active.
+    refetchInterval: (query) =>
+      query.state.status === "error" || query.state.data?.some(isActiveJob)
+        ? JOB_RECOVERY_INTERVAL
+        : false,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
   })
 }
 
