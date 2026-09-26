@@ -23,7 +23,10 @@ class EventBus:
     def publish(self, job_id: str, event: JobEvent) -> None:
         for queue in list(self._subscribers.get(job_id, ())):
             try:
-                queue.put_nowait(event)
+                # Each delivery owns a snapshot, including nested book/source
+                # models. Neither the producer nor another subscriber can
+                # change this queued event after publication.
+                queue.put_nowait(event.model_copy(deep=True))
             except asyncio.QueueFull:
                 continue
 
